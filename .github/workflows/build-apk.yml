@@ -1,0 +1,56 @@
+name: Compilar APK Android
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configurar Java 17 para Android Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar dependencias npm
+        run: npm install --legacy-peer-deps
+
+      - name: Generar carpeta nativa Android (Expo Prebuild)
+        run: npx expo prebuild --platform android --clean
+        env:
+          EXPO_NO_GIT_STATUS: 1
+
+      - name: Compilar archivo APK Release
+        working-directory: ./android
+        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+
+      - name: Subir APK como Artefacto descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Finanzas-USA-Android-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Publicar APK en GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Finanzas USA Android APK (v1.0.${{ github.run_number }})"
+          body: "Descarga e instala **app-release.apk** directamente en tu teléfono Android."
+          files: android/app/build/outputs/apk/release/app-release.apk
