@@ -43,11 +43,6 @@ export default function SettingsAndCategoriesScreen() {
     resetToZero,
     exportBackupJson,
     importBackupJson,
-    backendUrl,
-    setBackendUrl,
-    plaidClientId,
-    plaidSecret,
-    setPlaidCredentials,
     lastDriveBackupAt,
     recordDriveBackupTimestamp,
   } = useFinance();
@@ -59,12 +54,9 @@ export default function SettingsAndCategoriesScreen() {
   const [selectedIcon, setSelectedIcon] = useState(GENERAL_ICONS[0].icon);
   const [iconSearch, setIconSearch] = useState('');
 
-  // Modal de Respaldo / Restauración y Host
+  // Modal de Restauración de Respaldo (.json)
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupJsonInput, setBackupJsonInput] = useState('');
-  const [customHostInput, setCustomHostInput] = useState(backendUrl);
-  const [clientIdInput, setClientIdInput] = useState(plaidClientId);
-  const [secretInput, setSecretInput] = useState(plaidSecret);
 
   const filteredCategories = categories.filter((c) => c.type === tabType);
 
@@ -115,7 +107,6 @@ export default function SettingsAndCategoriesScreen() {
         }
       }
 
-      // Fallback en caso de que el dispositivo no soporte compartir archivo directo
       await recordDriveBackupTimestamp();
       await Share.share({
         title: `finanzas-usa-backup-${today}.json`,
@@ -136,7 +127,7 @@ export default function SettingsAndCategoriesScreen() {
       setShowBackupModal(false);
       Alert.alert(
         'Respaldo Restaurado',
-        'Tus cuentas (Wells Fargo, Chase, Truist...), movimientos, préstamos, metas y categorías fueron restaurados con éxito.'
+        'Tus cuentas, movimientos, préstamos, metas y categorías fueron restaurados con éxito.'
       );
     } catch {
       Alert.alert('Error', 'El texto JSON pegado no tiene un formato de respaldo válido.');
@@ -195,15 +186,10 @@ export default function SettingsAndCategoriesScreen() {
 
             <TouchableOpacity
               style={styles.toolBtnSecondary}
-              onPress={() => {
-                setCustomHostInput(backendUrl);
-                setClientIdInput(plaidClientId);
-                setSecretInput(plaidSecret);
-                setShowBackupModal(true);
-              }}
+              onPress={() => setShowBackupModal(true)}
             >
               <Ionicons name="cloud-download-outline" size={16} color="#F8FAFC" />
-              <Text style={styles.toolBtnSecondaryText}>Restaurar / Servidor</Text>
+              <Text style={styles.toolBtnSecondaryText}>Restaurar Copia (.json)</Text>
             </TouchableOpacity>
           </View>
 
@@ -305,7 +291,7 @@ export default function SettingsAndCategoriesScreen() {
           </View>
         ))}
 
-        {/* Bloque 3: Información de la App, Versión y Estado del Sistema */}
+        {/* Bloque 3: Información de la App, Versión 1.0.3 y Estado */}
         <View style={styles.versionCard}>
           <View style={styles.versionHeader}>
             <View style={styles.appLogoCircle}>
@@ -314,11 +300,11 @@ export default function SettingsAndCategoriesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.versionAppName}>Finanzas USA • Personal Finance</Text>
               <Text style={styles.versionSub}>
-                Versión 1.2.0 (Build 3 • Expo SDK 58 • Android)
+                Versión 1.0.3 (Build 4 • Expo SDK 58 • Android)
               </Text>
             </View>
             <View style={styles.statusOnlineBadge}>
-              <Text style={styles.statusOnlineText}>ACTIVO</Text>
+              <Text style={styles.statusOnlineText}>v1.0.3</Text>
             </View>
           </View>
 
@@ -327,6 +313,10 @@ export default function SettingsAndCategoriesScreen() {
           <View style={styles.versionRow}>
             <Text style={styles.versionLabel}>Bancos US Soportados:</Text>
             <Text style={styles.versionValue}>Wells Fargo, Chase, Truist, BofA, Citi, Amex</Text>
+          </View>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionLabel}>Importador Inteligente:</Text>
+            <Text style={styles.versionValue}>Alertas Bancarias / SMS / CSV ($0 Gratis)</Text>
           </View>
           <View style={styles.versionRow}>
             <Text style={styles.versionLabel}>Respaldo Cloud:</Text>
@@ -340,12 +330,6 @@ export default function SettingsAndCategoriesScreen() {
             <Text style={styles.versionLabel}>Estadísticas actuales:</Text>
             <Text style={styles.versionValue}>
               {accounts.length} cuentas • {transactions.length} mov. • {recurringItems.length} recurrentes
-            </Text>
-          </View>
-          <View style={styles.versionRow}>
-            <Text style={styles.versionLabel}>Servidor Backend:</Text>
-            <Text style={styles.versionValue} numberOfLines={1}>
-              {backendUrl}
             </Text>
           </View>
         </View>
@@ -434,84 +418,40 @@ export default function SettingsAndCategoriesScreen() {
         </View>
       </Modal>
 
-      {/* Modal para Restaurar Respaldo de Google Drive / JSON y Configurar Servidor / Plaid */}
+      {/* Modal para Restaurar Respaldo de Google Drive (.json) */}
       <Modal visible={showBackupModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { maxHeight: '90%' }]}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>Restaurar Drive, Servidor y Llaves Plaid</Text>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Restaurar Respaldo desde Google Drive</Text>
+            <Text style={styles.inputLabel}>
+              Abre tu archivo .json guardado en Google Drive, copia su contenido y pégalo aquí:
+            </Text>
+            <TextInput
+              style={[styles.input, { height: 130, textAlignVertical: 'top', marginTop: 4 }]}
+              placeholder='{"version": 2, "accounts": [...]}'
+              placeholderTextColor="#64748B"
+              multiline
+              value={backupJsonInput}
+              onChangeText={setBackupJsonInput}
+            />
 
-              <Text style={styles.inputLabel}>
-                Restaurar Respaldo desde Google Drive (Pega el contenido de tu archivo .json)
-              </Text>
-              <TextInput
-                style={[styles.input, { height: 85, textAlignVertical: 'top' }]}
-                placeholder='{"version": 2, "accounts": [...]}'
-                placeholderTextColor="#64748B"
-                multiline
-                value={backupJsonInput}
-                onChangeText={setBackupJsonInput}
-              />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
               <TouchableOpacity
-                style={[styles.saveBtn, { flex: 0, marginTop: 8, paddingVertical: 10, backgroundColor: '#22C55E' }]}
+                style={styles.cancelBtn}
+                onPress={() => setShowBackupModal(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.saveBtn, { backgroundColor: '#22C55E' }]}
                 onPress={handleRestoreBackup}
               >
                 <Text style={[styles.saveBtnText, { color: '#052E16' }]}>
-                  Restaurar Copia de Seguridad Ahora
+                  Restaurar Copia Ahora
                 </Text>
               </TouchableOpacity>
-
-              <Text style={[styles.inputLabel, { marginTop: 16 }]}>
-                URL de tu Servidor Backend en Vercel
-              </Text>
-              <TextInput
-                style={styles.input}
-                placeholder="https://finanzas-usa-puce.vercel.app/api"
-                placeholderTextColor="#64748B"
-                value={customHostInput}
-                onChangeText={setCustomHostInput}
-              />
-
-              <Text style={styles.inputLabel}>
-                Llaves de Plaid Developer (Opcional si usas Plaid Link API)
-              </Text>
-              <TextInput
-                style={[styles.input, { marginBottom: 6 }]}
-                placeholder="PLAID_CLIENT_ID (opcional)"
-                placeholderTextColor="#64748B"
-                value={clientIdInput}
-                onChangeText={setClientIdInput}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="PLAID_SECRET (opcional)"
-                placeholderTextColor="#64748B"
-                secureTextEntry
-                value={secretInput}
-                onChangeText={setSecretInput}
-              />
-
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setShowBackupModal(false)}
-                >
-                  <Text style={styles.cancelBtnText}>Cerrar</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.saveBtn}
-                  onPress={async () => {
-                    await setBackendUrl(customHostInput);
-                    await setPlaidCredentials(clientIdInput, secretInput);
-                    Alert.alert('Guardado', 'Configuración de servidor y llaves actualizada.');
-                    setShowBackupModal(false);
-                  }}
-                >
-                  <Text style={styles.saveBtnText}>Guardar Ajustes</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>

@@ -15,14 +15,6 @@ import {
   getDb,
   seedDefaultCategoriesOnly,
 } from '../db/database';
-import {
-  US_SANDBOX_BANKS,
-  PLAID_BACKEND_URL,
-  DEFAULT_PLAID_CLIENT_ID,
-  DEFAULT_PLAID_SECRET,
-  USBankTemplate,
-  connectPlaidInstitutionLive,
-} from '../services/plaidService';
 import { syncRecurringNotifications } from '../services/notificationService';
 import { matchAccountForAlert, parseBankAlertsOrCsv } from '../services/bankAutoImportService';
 
@@ -56,11 +48,6 @@ interface FinanceContextType {
   monthlyBudgets: MonthlyBudgetItem[];
   savingsGoals: SavingsGoal[];
   loans: LoanRecord[];
-  backendUrl: string;
-  setBackendUrl: (url: string) => Promise<void>;
-  plaidClientId: string;
-  plaidSecret: string;
-  setPlaidCredentials: (clientId: string, secret: string) => Promise<void>;
   lastDriveBackupAt: string | null;
   recordDriveBackupTimestamp: () => Promise<void>;
   includedTotalBalance: number;
@@ -70,7 +57,6 @@ interface FinanceContextType {
   toggleAccountIncludeInTotal: (accountId: string) => Promise<void>;
   addManualAccount: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
   connectCustomUSBank: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
-  connectBankViaLivePlaidApi: (bank: USBankTemplate) => Promise<number>;
   updateAccountBalanceAndMask: (
     accountId: string,
     newName: string,
@@ -83,7 +69,6 @@ interface FinanceContextType {
     closingDay: number,
     dueDay: number
   ) => Promise<void>;
-  connectSandboxUSBank: (bankPresetId: string, includeInTotal: boolean) => Promise<void>;
   deleteAccount: (accountId: string) => Promise<void>;
   // Categorías (Separadas en Ajustes)
   addCategory: (category: Omit<Category, 'id' | 'isCustom'>) => Promise<void>;
@@ -133,9 +118,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudgetItem[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [loans, setLoans] = useState<LoanRecord[]>([]);
-  const [backendUrl, setBackendUrlState] = useState<string>(PLAID_BACKEND_URL);
-  const [plaidClientId, setPlaidClientIdState] = useState<string>(DEFAULT_PLAID_CLIENT_ID);
-  const [plaidSecret, setPlaidSecretState] = useState<string>(DEFAULT_PLAID_SECRET);
   const [lastDriveBackupAt, setLastDriveBackupAtState] = useState<string | null>(null);
 
   const refreshAll = useCallback(async () => {
@@ -143,37 +125,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const db = await getDb();
 
       await seedDefaultCategoriesOnly(db);
-
-      const savedHost = await db.getFirstAsync<{ value: string }>(
-        "SELECT value FROM app_settings WHERE key = 'backend_url'"
-      );
-      if (savedHost?.value) {
-        setBackendUrlState(savedHost.value);
-      }
-
-      const savedClientId = await db.getFirstAsync<{ value: string }>(
-        "SELECT value FROM app_settings WHERE key = 'plaid_client_id'"
-      );
-      if (savedClientId?.value) {
-        setPlaidClientIdState(savedClientId.value);
-      } else {
-        await db.runAsync(
-          "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('plaid_client_id', ?)",
-          [DEFAULT_PLAID_CLIENT_ID]
-        );
-      }
-
-      const savedSecret = await db.getFirstAsync<{ value: string }>(
-        "SELECT value FROM app_settings WHERE key = 'plaid_secret'"
-      );
-      if (savedSecret?.value) {
-        setPlaidSecretState(savedSecret.value);
-      } else {
-        await db.runAsync(
-          "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('plaid_secret', ?)",
-          [DEFAULT_PLAID_SECRET]
-        );
-      }
 
       const savedDriveBackup = await db.getFirstAsync<{ value: string }>(
         "SELECT value FROM app_settings WHERE key = 'last_drive_backup_at'"
@@ -308,32 +259,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshAll();
   }, [refreshAll]);
 
-  const setBackendUrl = async (url: string) => {
-    const clean = url.trim().replace(/\/+$/, '');
-    const db = await getDb();
-    await db.runAsync(
-      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('backend_url', ?)",
-      [clean]
-    );
-    setBackendUrlState(clean);
-  };
-
-  const setPlaidCredentials = async (clientId: string, secret: string) => {
-    const cleanId = clientId.trim();
-    const cleanSec = secret.trim();
-    const db = await getDb();
-    await db.runAsync(
-      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('plaid_client_id', ?)",
-      [cleanId]
-    );
-    await db.runAsync(
-      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('plaid_secret', ?)",
-      [cleanSec]
-    );
-    setPlaidClientIdState(cleanId);
-    setPlaidSecretState(cleanSec);
-  };
-
   const recordDriveBackupTimestamp = async () => {
     const nowIso = new Date().toISOString();
     const db = await getDb();
@@ -428,55 +353,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await refreshAll();
   };
 
-  const connectBankViaLivePlaidApi = async (bank: USBankTemplate): Promise<number> => {
-    let data;
-    try {
-      data = await connectPlaidInstitutionLive(bank, backendUrl, plaidClientId, plaidSecret);
-    } catch {
-      // Fallback al servidor local en caso de que Vercel esté redesplegando
-      data = await connectPlaidInstitutionLive(
-        bank,
-        'http://192.168.1.91:4000/api',
-        plaidClientId,
-        plaidSecret
-      );
-    }
-
-    const db = await getDb();
-    let count = 0;
-    for (const acc of data.accounts || []) {
-      const uniqueId = `${acc.id}-${Date.now()}-${count}`;
-      await db.runAsync(
-        `INSERT INTO accounts (
-          id, name, institution, mask, type, balance, currency,
-          include_in_total, is_plaid_connected, plaid_account_id, plaid_item_id, color, last_synced_at,
-          credit_limit, closing_day, due_day
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          uniqueId,
-          acc.name,
-          acc.institution,
-          acc.mask ?? null,
-          acc.type,
-          acc.balance,
-          acc.currency || 'USD',
-          acc.includeInTotal ? 1 : 0,
-          acc.plaidAccountId ?? null,
-          acc.plaidItemId ?? null,
-          acc.color,
-          acc.lastSyncedAt ?? new Date().toISOString(),
-          acc.creditLimit ?? 0,
-          acc.closingDay ?? 0,
-          acc.dueDay ?? 0,
-        ]
-      );
-      count++;
-    }
-
-    await refreshAll();
-    return count;
-  };
-
   const updateAccountBalanceAndMask = async (
     accountId: string,
     newName: string,
@@ -502,61 +378,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       `UPDATE accounts SET credit_limit = ?, closing_day = ?, due_day = ? WHERE id = ?`,
       [creditLimit, closingDay, dueDay, accountId]
     );
-    await refreshAll();
-  };
-
-  const connectSandboxUSBank = async (bankPresetId: string, includeInTotal: boolean) => {
-    const preset = US_SANDBOX_BANKS.find((b) => b.id === bankPresetId);
-    if (!preset) return;
-
-    const db = await getDb();
-    const accountId = `acc-plaid-${preset.id}-${Date.now()}`;
-    const nowIso = new Date().toISOString();
-    const today = nowIso.split('T')[0];
-
-    await db.runAsync(
-      `INSERT INTO accounts (
-        id, name, institution, mask, type, balance, currency,
-        include_in_total, is_plaid_connected, plaid_account_id, color, last_synced_at,
-        credit_limit, closing_day, due_day
-      ) VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, 1, ?, ?, ?, ?, ?, ?)`,
-      [
-        accountId,
-        preset.accountName,
-        preset.institution,
-        preset.mask,
-        preset.type,
-        Math.abs(preset.balance),
-        includeInTotal ? 1 : 0,
-        `plaid_${preset.id}`,
-        preset.color,
-        nowIso,
-        preset.type === 'credit' ? 5000 : 0,
-        preset.type === 'credit' ? 20 : 0,
-        preset.type === 'credit' ? 15 : 0,
-      ]
-    );
-
-    for (const sampleTx of preset.sampleTransactions) {
-      const txId = `tx-plaid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      await db.runAsync(
-        `INSERT INTO transactions (
-          id, account_id, category_id, type, amount, fee, description, merchant_name, date, is_from_plaid, plaid_transaction_id
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 1, ?)`,
-        [
-          txId,
-          accountId,
-          sampleTx.categoryId,
-          sampleTx.type,
-          sampleTx.amount,
-          sampleTx.description,
-          sampleTx.merchantName,
-          today,
-          txId,
-        ]
-      );
-    }
-
     await refreshAll();
   };
 
@@ -746,7 +567,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addTransaction = async (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => {
     const db = await getDb();
-    const id = `tx-${Date.now()}`;
+    const id = `tx-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
     const feeVal = tx.fee && tx.fee > 0 ? tx.fee : 0;
 
     await db.runAsync(
@@ -773,7 +594,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (tx.type === 'income') {
       const netIncome = tx.amount - feeVal;
-      // En tarjeta de crédito un ingreso/abono reduce la deuda usada
       const delta = isCreditCard ? -netIncome : netIncome;
       await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
         delta,
@@ -781,7 +601,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ]);
     } else if (tx.type === 'expense') {
       const totalOut = tx.amount + feeVal;
-      // En tarjeta de crédito un gasto aumenta el saldo utilizado
       const delta = isCreditCard ? totalOut : -totalOut;
       await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
         delta,
@@ -824,7 +643,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       fromAccountId,
     ]);
 
-    // Si la cuenta destino es una tarjeta de crédito, pagarle reduce la deuda usada
     if (toAcc?.type === 'credit') {
       await db.runAsync('UPDATE accounts SET balance = MAX(0, balance - ?) WHERE id = ?', [
         amount,
@@ -1200,11 +1018,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         monthlyBudgets,
         savingsGoals,
         loans,
-        backendUrl,
-        setBackendUrl,
-        plaidClientId,
-        plaidSecret,
-        setPlaidCredentials,
         lastDriveBackupAt,
         recordDriveBackupTimestamp,
         includedTotalBalance,
@@ -1213,10 +1026,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         toggleAccountIncludeInTotal,
         addManualAccount,
         connectCustomUSBank,
-        connectBankViaLivePlaidApi,
         updateAccountBalanceAndMask,
         updateCreditCardDetails,
-        connectSandboxUSBank,
         deleteAccount,
         addCategory,
         deleteCategory,

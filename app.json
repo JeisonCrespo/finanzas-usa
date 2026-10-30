@@ -2,14 +2,17 @@
   "expo": {
     "name": "Finanzas USA",
     "slug": "finanzas-usa",
-    "version": "1.2.0",
+    "version": "1.0.3",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "finanzasusa",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "android": {
       "package": "com.jeison.finanzasusa",
+      "versionCode": 3,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
       }
     },
