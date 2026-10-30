@@ -239,24 +239,25 @@ export function parseBankAlertsOrCsv(rawText: string): ParsedBankMovement[] {
         // Extraer nombre del comercio después de "at ", "with ", "to ", "from ", "en "
         let merchant = 'Movimiento Bancario';
         const merchMatch = line.match(
-          /(?:at|with|to|from|en|comercio)\s+([A-Za-z0-9\s.&'-]{2,30}?)(?:\s+on\b|\s+with\b|\s+for\b|\s+card\b|\s+ending\b|\s+account\b|\.|,|$)/i
+          /(?:at|with|to|from|en|comercio)\s+([A-Za-z0-9ÁÉÍÓÚáéíóúÑñ\s.&'-]{2,32}?)(?:\s+on\b|\s+with\b|\s+con\b|\s+for\b|\s+card\b|\s+tarjeta\b|\s+ending\b|\s+account\b|\s+••••|\s+\*+|\.|,|$)/i
         );
         if (merchMatch && merchMatch[1]) {
           merchant = merchMatch[1].trim();
         } else {
-          // Si el usuario escribió por ejemplo: "Walmart $45.20" o "$19.99 Steam"
+          // Si el usuario escribió por ejemplo: "Walmart $45.20 3319" o "Google Billetera: $19.99 Steam"
           const stripped = line
             .replace(amountMatch[0], '')
-            .replace(/chase|wells fargo|truist|alert|notification|purchase|transaction|of|:|-/gi, '')
+            .replace(/(?:ending in|ending|cuenta|card|tarjeta|con|visa|mastercard|amex|•••+|\.\.\.+|\*{2,})\s*\d{4}/gi, '')
+            .replace(/google\s*billetera|google\s*wallet|google\s*pay|gpay|pagaste|compra\s*de|chase|wells\s*fargo|truist|paypal|uber|alert|notification|purchase|transaction|of|:|-/gi, '')
             .trim();
           if (stripped.length >= 2) {
             merchant = stripped.slice(0, 35);
           }
         }
 
-        // Detectar pista de banco o últimos 4 dígitos
+        // Detectar pista de banco o últimos 4 dígitos (Google Billetera siempre muestra •••• 1234 de la tarjeta usada)
         let bankHint: string | undefined;
-        const maskMatch = line.match(/(?:ending in|ending|cuenta|card|•••|\.\.\.)\s*(\d{4})/i);
+        const maskMatch = line.match(/(?:ending in|ending|cuenta|card|tarjeta|visa|mastercard|amex|•••+|\.\.\.+|\*{2,}|\b)\s*(\d{4})\b/i);
         if (maskMatch) {
           bankHint = maskMatch[1];
         } else if (/wells\s*fargo/i.test(line)) {
@@ -269,6 +270,8 @@ export function parseBankAlertsOrCsv(rawText: string): ParsedBankMovement[] {
           bankHint = 'paypal';
         } else if (/uber/i.test(line)) {
           bankHint = 'uber';
+        } else if (/google\s*billetera|google\s*wallet|google\s*pay|gpay/i.test(line)) {
+          bankHint = 'google';
         }
 
         results.push({

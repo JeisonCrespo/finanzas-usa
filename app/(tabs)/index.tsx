@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
-import { TransactionType } from '../../src/types/finance';
+import { Transaction, TransactionType } from '../../src/types/finance';
 import { SmartIcon } from '../../src/components/BrandIcon';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
 
@@ -25,6 +25,8 @@ export default function DashboardScreen() {
     excludedTotalBalance,
     netWorthBalance,
     addTransaction,
+    updateTransaction,
+    importBankMovementsText,
     transferBetweenAccounts,
     deleteTransaction,
     confirmRecurringItem,
@@ -32,6 +34,20 @@ export default function DashboardScreen() {
   } = useFinance();
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editTxType, setEditTxType] = useState<TransactionType>('expense');
+  const [editTxAmount, setEditTxAmount] = useState('');
+  const [editTxFee, setEditTxFee] = useState('');
+  const [editTxDesc, setEditTxDesc] = useState('');
+  const [editTxDate, setEditTxDate] = useState('');
+  const [editTxAccId, setEditTxAccId] = useState('');
+  const [editTxToAccId, setEditTxToAccId] = useState('');
+  const [editTxCatId, setEditTxCatId] = useState('');
+  const [showGWalletModal, setShowGWalletModal] = useState(false);
+  const [gWalletAmount, setGWalletAmount] = useState('');
+  const [gWalletMerchant, setGWalletMerchant] = useState('');
+  const [gWalletText, setGWalletText] = useState('');
+  const [gWalletAccId, setGWalletAccId] = useState('');
   const [txType, setTxType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('');
@@ -209,11 +225,30 @@ export default function DashboardScreen() {
 
           <View style={styles.quickActionRow}>
             <TouchableOpacity
+              style={[
+                styles.transferQuickBtn,
+                { backgroundColor: '#052E16', borderColor: '#22C55E' },
+              ]}
+              onPress={() => {
+                setGWalletAccId(accounts[0]?.id || '');
+                setGWalletAmount('');
+                setGWalletMerchant('');
+                setGWalletText('');
+                setShowGWalletModal(true);
+              }}
+            >
+              <Ionicons name="logo-google" size={15} color="#4ADE80" />
+              <Text style={[styles.transferQuickText, { color: '#4ADE80' }]}>
+                Pago Google Billetera
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.transferQuickBtn}
               onPress={() => openNewTransactionModal('transfer')}
             >
               <Ionicons name="swap-horizontal-outline" size={16} color="#38BDF8" />
-              <Text style={styles.transferQuickText}>Pasar Dinero entre Cuentas</Text>
+              <Text style={styles.transferQuickText}>Pasar Dinero</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -375,7 +410,22 @@ export default function DashboardScreen() {
             const isTransfer = tx.type === 'transfer';
 
             return (
-              <View key={tx.id} style={styles.txRow}>
+              <TouchableOpacity
+                key={tx.id}
+                style={styles.txRow}
+                activeOpacity={0.75}
+                onPress={() => {
+                  setEditingTx(tx);
+                  setEditTxType(tx.type);
+                  setEditTxAmount(String(tx.amount));
+                  setEditTxFee(tx.fee ? String(tx.fee) : '');
+                  setEditTxDesc(tx.description);
+                  setEditTxDate(tx.date);
+                  setEditTxAccId(tx.accountId);
+                  setEditTxToAccId(tx.toAccountId || accounts[1]?.id || accounts[0]?.id || '');
+                  setEditTxCatId(tx.categoryId);
+                }}
+              >
                 <View style={{ marginRight: 12 }}>
                   <SmartIcon
                     iconName={isTransfer ? 'swap-horizontal-outline' : cat?.icon}
@@ -413,14 +463,12 @@ export default function DashboardScreen() {
                     {tx.type === 'income' ? '+' : tx.type === 'transfer' ? '⇄ ' : '-'}$
                     {tx.amount.toFixed(2)}
                   </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
                     <Text style={styles.txDate}>{tx.date}</Text>
-                    <TouchableOpacity onPress={() => deleteTransaction(tx.id)}>
-                      <Ionicons name="trash-outline" size={14} color="#64748B" />
-                    </TouchableOpacity>
+                    <Ionicons name="create-outline" size={13} color="#38BDF8" />
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -589,6 +637,376 @@ export default function DashboardScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+      </KeyboardSafeModal>
+
+      {/* Modal para Ver en Detalle y Modificar o Eliminar un Movimiento del Historial */}
+      <KeyboardSafeModal
+        visible={Boolean(editingTx)}
+        animationType="slide"
+        onClose={() => setEditingTx(null)}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <Text style={[styles.modalTitle, { marginBottom: 0 }]}>
+            Detalle y Edición del Movimiento
+          </Text>
+          {editingTx && (
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                backgroundColor: '#450A0A',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#7F1D1D',
+              }}
+              onPress={() => {
+                const idToDelete = editingTx.id;
+                setEditingTx(null);
+                deleteTransaction(idToDelete);
+              }}
+            >
+              <Ionicons name="trash-outline" size={14} color="#FCA5A5" />
+              <Text style={{ color: '#FCA5A5', fontSize: 11, fontWeight: '700' }}>
+                Eliminar
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.segmentRow}>
+          <TouchableOpacity
+            style={[styles.segmentBtn, editTxType === 'expense' && styles.segmentExpenseActive]}
+            onPress={() => {
+              setEditTxType('expense');
+              const firstCat = categories.find((c) => c.type === 'expense');
+              if (firstCat) setEditTxCatId(firstCat.id);
+            }}
+          >
+            <Text style={styles.segmentText}>Gasto</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.segmentBtn, editTxType === 'income' && styles.segmentIncomeActive]}
+            onPress={() => {
+              setEditTxType('income');
+              const firstCat = categories.find((c) => c.type === 'income');
+              if (firstCat) setEditTxCatId(firstCat.id);
+            }}
+          >
+            <Text style={styles.segmentText}>Ingreso</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.segmentBtn, editTxType === 'transfer' && styles.segmentTransferActive]}
+            onPress={() => setEditTxType('transfer')}
+          >
+            <Text style={styles.segmentText}>Transferir</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Monto ($ USD)</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="decimal-pad"
+              value={editTxAmount}
+              onChangeText={setEditTxAmount}
+            />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Comisión ($ USD)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0.00"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={editTxFee}
+              onChangeText={setEditTxFee}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1.5 }}>
+            <Text style={styles.inputLabel}>Descripción / Comercio</Text>
+            <TextInput
+              style={styles.input}
+              value={editTxDesc}
+              onChangeText={setEditTxDesc}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Fecha (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.input}
+              value={editTxDate}
+              onChangeText={setEditTxDate}
+            />
+          </View>
+        </View>
+
+        <Text style={styles.inputLabel}>
+          {editTxType === 'transfer' ? 'Cuenta Origen (De dónde salió)' : 'Cuenta / Tarjeta'}
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                editTxAccId === acc.id && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
+              ]}
+              onPress={() => setEditTxAccId(acc.id)}
+            >
+              <Text style={styles.chipText}>
+                {acc.name} (${acc.balance.toFixed(0)})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {editTxType === 'transfer' ? (
+          <>
+            <Text style={styles.inputLabel}>Cuenta Destino (A dónde entró)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+              {accounts.map((acc) => (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={[
+                    styles.chip,
+                    editTxToAccId === acc.id && {
+                      borderColor: '#4ADE80',
+                      backgroundColor: '#14532D',
+                    },
+                  ]}
+                  onPress={() => setEditTxToAccId(acc.id)}
+                >
+                  <Text style={styles.chipText}>
+                    {acc.name} (${acc.balance.toFixed(0)})
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        ) : (
+          <>
+            <Text style={styles.inputLabel}>Categoría</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+              {categories
+                .filter((c) => c.type === editTxType)
+                .map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.chip,
+                      editTxCatId === cat.id && {
+                        borderColor: cat.color,
+                        backgroundColor: cat.color + '33',
+                      },
+                    ]}
+                    onPress={() => setEditTxCatId(cat.id)}
+                  >
+                    <Text style={styles.chipText}>{cat.name}</Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+          </>
+        )}
+
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setEditingTx(null)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={async () => {
+              if (!editingTx) return;
+              const parsedAmt = parseFloat(editTxAmount);
+              const parsedFee = parseFloat(editTxFee) || 0;
+              if (!parsedAmt || parsedAmt <= 0 || !editTxAccId) return;
+
+              await updateTransaction(editingTx.id, {
+                accountId: editTxAccId,
+                toAccountId: editTxType === 'transfer' ? editTxToAccId : undefined,
+                categoryId: editTxCatId,
+                type: editTxType,
+                amount: parsedAmt,
+                fee: parsedFee,
+                description: editTxDesc.trim() || editingTx.description,
+                date: editTxDate.trim() || editingTx.date,
+              });
+              setEditingTx(null);
+            }}
+          >
+            <Text style={styles.saveBtnText}>Guardar Cambios</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
+
+      {/* Modal Rápido para Pagos con Google Billetera / Alertas */}
+      <KeyboardSafeModal
+        visible={showGWalletModal}
+        animationType="slide"
+        onClose={() => setShowGWalletModal(false)}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <Ionicons name="logo-google" size={20} color="#4ADE80" />
+          <Text style={[styles.modalTitle, { marginBottom: 0 }]}>
+            Pago Rápido con Google Billetera
+          </Text>
+        </View>
+        <Text style={{ color: '#94A3B8', fontSize: 12, lineHeight: 18, marginBottom: 8 }}>
+          Registra en 2 segundos lo que acabas de pagar acercando el teléfono con Google Billetera (sin necesidad de copiar notificaciones):
+        </Text>
+
+        <Text style={styles.inputLabel}>1. ¿Con qué tarjeta de tu Google Billetera pagaste?</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                gWalletAccId === acc.id && {
+                  borderColor: '#4ADE80',
+                  backgroundColor: '#14532D',
+                },
+              ]}
+              onPress={() => setGWalletAccId(acc.id)}
+            >
+              <Text style={styles.chipText}>
+                {acc.name} {acc.mask ? `(•••• ${acc.mask})` : ''}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>2. Monto Pagado ($ USD)</Text>
+            <TextInput
+              style={[styles.input, { fontSize: 17, fontWeight: '800', color: '#4ADE80' }]}
+              placeholder="0.00"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={gWalletAmount}
+              onChangeText={setGWalletAmount}
+            />
+          </View>
+          <View style={{ flex: 1.4 }}>
+            <Text style={styles.inputLabel}>3. ¿Dónde pagaste?</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. Walmart, Gasolina..."
+              placeholderTextColor="#64748B"
+              value={gWalletMerchant}
+              onChangeText={setGWalletMerchant}
+            />
+          </View>
+        </View>
+
+        <Text style={styles.inputLabel}>O toca un comercio rápido:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          {[
+            'Walmart',
+            'Target',
+            'Publix',
+            'Gasolina / Shell',
+            "McDonald's",
+            'Starbucks',
+            'Chick-fil-A',
+            'Uber / Lyft',
+            'Costco',
+            'CVS / Walgreens',
+            'Amazon',
+            'Restaurante',
+          ].map((place) => (
+            <TouchableOpacity
+              key={place}
+              style={[
+                styles.chip,
+                gWalletMerchant === place && {
+                  borderColor: '#38BDF8',
+                  backgroundColor: '#0C4A6E',
+                },
+              ]}
+              onPress={() => setGWalletMerchant(place)}
+            >
+              <Text style={styles.chipText}>{place}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <Text style={[styles.inputLabel, { marginTop: 8 }]}>
+          Opcional: Si te llegó por SMS de tu banco y lo copiaste, pégalo aquí:
+        </Text>
+        <TextInput
+          style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+          placeholder={'Ej. Wells Fargo SMS: Purchase of $24.50 at WALMART...'}
+          placeholderTextColor="#64748B"
+          multiline
+          value={gWalletText}
+          onChangeText={setGWalletText}
+        />
+
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowGWalletModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveBtn, { backgroundColor: '#22C55E' }]}
+            onPress={async () => {
+              // Si ingresó monto arriba (modo rápido de 2 segundos sin copiar nada)
+              const quickAmt = parseFloat(gWalletAmount);
+              if (!isNaN(quickAmt) && quickAmt > 0) {
+                const place = gWalletMerchant.trim() || 'Pago con Google Billetera';
+                const count = await importBankMovementsText(
+                  `${place} $${quickAmt.toFixed(2)}`,
+                  gWalletAccId || accounts[0]?.id
+                );
+                if (count > 0) {
+                  setGWalletAmount('');
+                  setGWalletMerchant('');
+                  setShowGWalletModal(false);
+                  return;
+                }
+              }
+
+              // Si pegó un SMS o texto abajo
+              const count = await importBankMovementsText(
+                gWalletText,
+                gWalletAccId || accounts[0]?.id
+              );
+              if (count > 0) {
+                setGWalletText('');
+                setShowGWalletModal(false);
+                Alert.alert(
+                  '✓ Pago de Google Billetera Registrado',
+                  `Se descontó automáticamente de tu tarjeta y se asignó su categoría e ícono.`
+                );
+              } else {
+                Alert.alert(
+                  'Ingresa el monto',
+                  'Escribe el monto en la casilla de arriba (ej. 18.50) o pega el SMS del banco.'
+                );
+              }
+            }}
+          >
+            <Text style={[styles.saveBtnText, { color: '#052E16' }]}>
+              Registrar Pago
+            </Text>
+          </TouchableOpacity>
+        </View>
       </KeyboardSafeModal>
     </View>
   );

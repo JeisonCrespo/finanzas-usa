@@ -331,10 +331,10 @@ export default function AccountsScreen() {
           <Ionicons name="flash" size={20} color="#4ADE80" />
           <View style={{ flex: 1 }}>
             <Text style={{ color: '#4ADE80', fontSize: 13, fontWeight: '800' }}>
-              Importar Gastos de Alerta / SMS / CSV
+              Importar de Google Billetera / Alertas / CSV
             </Text>
             <Text style={{ color: '#86EFAC', fontSize: 11, marginTop: 1 }}>
-              Pega notificaciones de Wells Fargo, Chase, Truist, PayPal o Uber y se registran solas.
+              Pega notificaciones de Google Billetera, Wells Fargo, Chase, Truist, PayPal o Uber.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#4ADE80" />

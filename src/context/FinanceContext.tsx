@@ -89,6 +89,19 @@ interface FinanceContextType {
   deleteLoanRecord: (loanId: string) => Promise<void>;
   // Transacciones y Transferencias
   addTransaction: (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => Promise<void>;
+  updateTransaction: (
+    txId: string,
+    updated: {
+      accountId: string;
+      toAccountId?: string;
+      categoryId: string;
+      type: Transaction['type'];
+      amount: number;
+      fee?: number;
+      description: string;
+      date: string;
+    }
+  ) => Promise<void>;
   importBankMovementsText: (rawText: string, defaultAccountId?: string) => Promise<number>;
   transferBetweenAccounts: (params: TransferParams) => Promise<void>;
   deleteTransaction: (txId: string) => Promise<void>;
@@ -669,35 +682,152 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await refreshAll();
   };
 
+  const revertTxBalanceEffect = async (db: any, target: Transaction) => {
+    const feeVal = target.fee || 0;
+    const acc = accounts.find((a) => a.id === target.accountId);
+    const isCreditCard = acc?.type === 'credit';
+
+    if (target.type === 'transfer' && target.toAccountId) {
+      const toAcc = accounts.find((a) => a.id === target.toAccountId);
+      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+        target.amount + feeVal,
+        target.accountId,
+      ]);
+      if (toAcc?.type === 'credit') {
+        await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+          target.amount,
+          target.toAccountId,
+        ]);
+      } else {
+        await db.runAsync('UPDATE accounts SET balance = balance - ? WHERE id = ?', [
+          target.amount,
+          target.toAccountId,
+        ]);
+      }
+    } else if (target.type === 'income') {
+      const netIncome = target.amount - feeVal;
+      const reverseDelta = isCreditCard ? netIncome : -netIncome;
+      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+        reverseDelta,
+        target.accountId,
+      ]);
+    } else {
+      const totalOut = target.amount + feeVal;
+      const reverseDelta = isCreditCard ? -totalOut : totalOut;
+      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+        reverseDelta,
+        target.accountId,
+      ]);
+    }
+  };
+
+  const applyTxBalanceEffect = async (
+    db: any,
+    tx: {
+      accountId: string;
+      toAccountId?: string;
+      type: Transaction['type'];
+      amount: number;
+      fee?: number;
+    }
+  ) => {
+    const feeVal = tx.fee && tx.fee > 0 ? tx.fee : 0;
+    const acc = accounts.find((a) => a.id === tx.accountId);
+    const isCreditCard = acc?.type === 'credit';
+
+    if (tx.type === 'transfer' && tx.toAccountId) {
+      const toAcc = accounts.find((a) => a.id === tx.toAccountId);
+      await db.runAsync('UPDATE accounts SET balance = balance - ? WHERE id = ?', [
+        tx.amount + feeVal,
+        tx.accountId,
+      ]);
+      if (toAcc?.type === 'credit') {
+        await db.runAsync('UPDATE accounts SET balance = MAX(0, balance - ?) WHERE id = ?', [
+          tx.amount,
+          tx.toAccountId,
+        ]);
+      } else {
+        await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+          tx.amount,
+          tx.toAccountId,
+        ]);
+      }
+    } else if (tx.type === 'income') {
+      const netIncome = tx.amount - feeVal;
+      const delta = isCreditCard ? -netIncome : netIncome;
+      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+        delta,
+        tx.accountId,
+      ]);
+    } else if (tx.type === 'expense') {
+      const totalOut = tx.amount + feeVal;
+      const delta = isCreditCard ? totalOut : -totalOut;
+      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+        delta,
+        tx.accountId,
+      ]);
+    }
+  };
+
   const deleteTransaction = async (txId: string) => {
     const db = await getDb();
     const target = transactions.find((t) => t.id === txId);
     if (!target) return;
 
-    const feeVal = target.fee || 0;
-
-    if (target.type === 'transfer' && target.toAccountId) {
-      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
-        target.amount + feeVal,
-        target.accountId,
-      ]);
-      await db.runAsync('UPDATE accounts SET balance = balance - ? WHERE id = ?', [
-        target.amount,
-        target.toAccountId,
-      ]);
-    } else if (target.type === 'income') {
-      await db.runAsync('UPDATE accounts SET balance = balance - ? WHERE id = ?', [
-        target.amount - feeVal,
-        target.accountId,
-      ]);
-    } else {
-      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
-        target.amount + feeVal,
-        target.accountId,
-      ]);
-    }
-
+    await revertTxBalanceEffect(db, target);
     await db.runAsync('DELETE FROM transactions WHERE id = ?', [txId]);
+    await refreshAll();
+  };
+
+  const updateTransaction = async (
+    txId: string,
+    updated: {
+      accountId: string;
+      toAccountId?: string;
+      categoryId: string;
+      type: Transaction['type'];
+      amount: number;
+      fee?: number;
+      description: string;
+      date: string;
+    }
+  ) => {
+    const db = await getDb();
+    const target = transactions.find((t) => t.id === txId);
+    if (!target || updated.amount <= 0) return;
+
+    // 1. Revertir el efecto del movimiento anterior en los saldos
+    await revertTxBalanceEffect(db, target);
+
+    // 2. Actualizar el registro en la base de datos
+    const cleanFee = updated.fee && updated.fee > 0 ? updated.fee : 0;
+    await db.runAsync(
+      `UPDATE transactions
+       SET account_id = ?, to_account_id = ?, category_id = ?, type = ?, amount = ?, fee = ?, description = ?, merchant_name = ?, date = ?
+       WHERE id = ?`,
+      [
+        updated.accountId,
+        updated.type === 'transfer' ? updated.toAccountId ?? null : null,
+        updated.type === 'transfer' ? 'cat-fees' : updated.categoryId,
+        updated.type,
+        updated.amount,
+        cleanFee,
+        updated.description.trim(),
+        updated.description.trim(),
+        updated.date.trim() || target.date,
+        txId,
+      ]
+    );
+
+    // 3. Aplicar el nuevo efecto en los saldos
+    await applyTxBalanceEffect(db, {
+      accountId: updated.accountId,
+      toAccountId: updated.type === 'transfer' ? updated.toAccountId : undefined,
+      type: updated.type,
+      amount: updated.amount,
+      fee: cleanFee,
+    });
+
     await refreshAll();
   };
 
@@ -1054,6 +1184,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         registerLoanPayment,
         deleteLoanRecord,
         addTransaction,
+        updateTransaction,
         importBankMovementsText,
         transferBetweenAccounts,
         deleteTransaction,
