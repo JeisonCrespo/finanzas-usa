@@ -10,7 +10,9 @@
     "newArchEnabled": true,
     "android": {
       "package": "com.jeison.finanzasusa",
-      "versionCode": 3,
+      "versionCode": 4,
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"

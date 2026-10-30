@@ -16,6 +16,7 @@ import * as Sharing from 'expo-sharing';
 import { useFinance } from '../../src/context/FinanceContext';
 import { GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
 import { sendTestNotificationNow } from '../../src/services/notificationService';
+import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
 
 const COLOR_PALETTE = [
   '#E50914',
@@ -312,7 +313,7 @@ export default function SettingsAndCategoriesScreen() {
 
           <View style={styles.versionRow}>
             <Text style={styles.versionLabel}>Bancos US Soportados:</Text>
-            <Text style={styles.versionValue}>Wells Fargo, Chase, Truist, BofA, Citi, Amex</Text>
+            <Text style={styles.versionValue}>Wells Fargo, Chase, Truist, PayPal, Uber, BofA, Citi</Text>
           </View>
           <View style={styles.versionRow}>
             <Text style={styles.versionLabel}>Importador Inteligente:</Text>
@@ -336,125 +337,125 @@ export default function SettingsAndCategoriesScreen() {
       </ScrollView>
 
       {/* Modal para Crear Nueva Categoría con 65+ Íconos y Buscador */}
-      <Modal visible={showModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              Nueva Categoría de {tabType === 'expense' ? 'Gasto' : 'Ingreso'}
-            </Text>
+      <KeyboardSafeModal
+        visible={showModal}
+        animationType="slide"
+        onClose={() => setShowModal(false)}
+      >
+        <Text style={styles.modalTitle}>
+          Nueva Categoría de {tabType === 'expense' ? 'Gasto' : 'Ingreso'}
+        </Text>
 
-            <Text style={styles.inputLabel}>Nombre de la Categoría</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. Comida, Steam, Mascotas, Gimnasio..."
-              placeholderTextColor="#64748B"
-              value={name}
-              onChangeText={setName}
+        <Text style={styles.inputLabel}>Nombre de la Categoría</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Comida, Steam, Mascotas, Gimnasio..."
+          placeholderTextColor="#64748B"
+          value={name}
+          onChangeText={setName}
+        />
+
+        <Text style={styles.inputLabel}>Color</Text>
+        <View style={styles.paletteRow}>
+          {COLOR_PALETTE.map((color) => (
+            <TouchableOpacity
+              key={color}
+              style={[
+                styles.colorCircle,
+                { backgroundColor: color },
+                selectedColor === color && styles.colorCircleSelected,
+              ]}
+              onPress={() => setSelectedColor(color)}
             />
-
-            <Text style={styles.inputLabel}>Color</Text>
-            <View style={styles.paletteRow}>
-              {COLOR_PALETTE.map((color) => (
-                <TouchableOpacity
-                  key={color}
-                  style={[
-                    styles.colorCircle,
-                    { backgroundColor: color },
-                    selectedColor === color && styles.colorCircleSelected,
-                  ]}
-                  onPress={() => setSelectedColor(color)}
-                />
-              ))}
-            </View>
-
-            <Text style={styles.inputLabel}>
-              Buscar Ícono ({filteredIcons.length} disponibles: Netflix, Steam, Walmart, Zelle, Gym...)
-            </Text>
-            <TextInput
-              style={[styles.input, { marginBottom: 8, paddingVertical: 8 }]}
-              placeholder="Filtrar ícono (ej. juego, comida, auto, banco...)"
-              placeholderTextColor="#64748B"
-              value={iconSearch}
-              onChangeText={setIconSearch}
-            />
-
-            <ScrollView style={{ maxHeight: 180 }} contentContainerStyle={styles.iconGrid}>
-              {filteredIcons.map((item) => (
-                <TouchableOpacity
-                  key={item.icon}
-                  style={[
-                    styles.iconOption,
-                    selectedIcon === item.icon && {
-                      borderColor: selectedColor,
-                      backgroundColor: selectedColor + '25',
-                    },
-                  ]}
-                  onPress={() => setSelectedIcon(item.icon)}
-                >
-                  <SmartIcon
-                    iconName={item.icon}
-                    color={selectedIcon === item.icon ? selectedColor : '#CBD5E1'}
-                    size={18}
-                    boxSize={30}
-                  />
-                  <Text style={styles.iconOptionLabel}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setShowModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveCategory}>
-                <Text style={styles.saveBtnText}>Crear Categoría</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          ))}
         </View>
-      </Modal>
+
+        <Text style={styles.inputLabel}>
+          Buscar Ícono ({filteredIcons.length} disponibles: Netflix, Steam, Walmart, Zelle, Gym...)
+        </Text>
+        <TextInput
+          style={[styles.input, { marginBottom: 8, paddingVertical: 8 }]}
+          placeholder="Filtrar ícono (ej. juego, comida, auto, banco...)"
+          placeholderTextColor="#64748B"
+          value={iconSearch}
+          onChangeText={setIconSearch}
+        />
+
+        <ScrollView style={{ maxHeight: 180 }} contentContainerStyle={styles.iconGrid} nestedScrollEnabled>
+          {filteredIcons.map((item) => (
+            <TouchableOpacity
+              key={item.icon}
+              style={[
+                styles.iconOption,
+                selectedIcon === item.icon && {
+                  borderColor: selectedColor,
+                  backgroundColor: selectedColor + '25',
+                },
+              ]}
+              onPress={() => setSelectedIcon(item.icon)}
+            >
+              <SmartIcon
+                iconName={item.icon}
+                color={selectedIcon === item.icon ? selectedColor : '#CBD5E1'}
+                size={18}
+                boxSize={30}
+              />
+              <Text style={styles.iconOptionLabel}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveCategory}>
+            <Text style={styles.saveBtnText}>Crear Categoría</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
 
       {/* Modal para Restaurar Respaldo de Google Drive (.json) */}
-      <Modal visible={showBackupModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Restaurar Respaldo desde Google Drive</Text>
-            <Text style={styles.inputLabel}>
-              Abre tu archivo .json guardado en Google Drive, copia su contenido y pégalo aquí:
+      <KeyboardSafeModal
+        visible={showBackupModal}
+        animationType="slide"
+        onClose={() => setShowBackupModal(false)}
+      >
+        <Text style={styles.modalTitle}>Restaurar Respaldo desde Google Drive</Text>
+        <Text style={styles.inputLabel}>
+          Abre tu archivo .json guardado en Google Drive, copia su contenido y pégalo aquí:
+        </Text>
+        <TextInput
+          style={[styles.input, { height: 130, textAlignVertical: 'top', marginTop: 4 }]}
+          placeholder='{"version": 2, "accounts": [...]}'
+          placeholderTextColor="#64748B"
+          multiline
+          value={backupJsonInput}
+          onChangeText={setBackupJsonInput}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowBackupModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.saveBtn, { backgroundColor: '#22C55E' }]}
+            onPress={handleRestoreBackup}
+          >
+            <Text style={[styles.saveBtnText, { color: '#052E16' }]}>
+              Restaurar Copia Ahora
             </Text>
-            <TextInput
-              style={[styles.input, { height: 130, textAlignVertical: 'top', marginTop: 4 }]}
-              placeholder='{"version": 2, "accounts": [...]}'
-              placeholderTextColor="#64748B"
-              multiline
-              value={backupJsonInput}
-              onChangeText={setBackupJsonInput}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setShowBackupModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.saveBtn, { backgroundColor: '#22C55E' }]}
-                onPress={handleRestoreBackup}
-              >
-                <Text style={[styles.saveBtnText, { color: '#052E16' }]}>
-                  Restaurar Copia Ahora
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </KeyboardSafeModal>
     </View>
   );
 }

@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
   TextInput,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
 import { LoanDirection, RecurrenceFrequency } from '../../src/types/finance';
 import { BRAND_PRESETS, GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
 import { sendTestNotificationNow } from '../../src/services/notificationService';
+import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
 
 type ControlSubTab = 'recurring' | 'loans' | 'goals';
 
@@ -39,6 +40,18 @@ export default function ControlScreen() {
   } = useFinance();
 
   const [subTab, setSubTab] = useState<ControlSubTab>('recurring');
+
+  // Gesto de volver atrás en Android: si está en Préstamos o Metas, regresa a Recurrentes primero
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (subTab !== 'recurring') {
+        setSubTab('recurring');
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [subTab]);
 
   // --- Estados Recurrentes ---
   const [showAddRecModal, setShowAddRecModal] = useState(false);
@@ -590,446 +603,446 @@ export default function ControlScreen() {
       </ScrollView>
 
       {/* Modal Confirmar Recurrente */}
-      <Modal visible={Boolean(confirmingItemId)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Confirmar Movimiento Recurrente</Text>
-            <Text style={styles.inputLabel}>
-              Ajusta el monto si este mes varió antes de aplicarlo a tu saldo:
-            </Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="decimal-pad"
-              value={customConfirmAmount}
-              onChangeText={setCustomConfirmAmount}
-            />
+      <KeyboardSafeModal
+        visible={Boolean(confirmingItemId)}
+        animationType="fade"
+        onClose={() => setConfirmingItemId(null)}
+      >
+        <Text style={styles.modalTitle}>Confirmar Movimiento Recurrente</Text>
+        <Text style={styles.inputLabel}>
+          Ajusta el monto si este mes varió antes de aplicarlo a tu saldo:
+        </Text>
+        <TextInput
+          style={styles.input}
+          keyboardType="decimal-pad"
+          value={customConfirmAmount}
+          onChangeText={setCustomConfirmAmount}
+        />
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setConfirmingItemId(null)}
-              >
-                <Text style={styles.cancelBtnText}>Todavía no</Text>
-              </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setConfirmingItemId(null)}
+          >
+            <Text style={styles.cancelBtnText}>Todavía no</Text>
+          </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={async () => {
-                  if (confirmingItemId) {
-                    const parsed = parseFloat(customConfirmAmount);
-                    await confirmRecurringItem(
-                      confirmingItemId,
-                      !isNaN(parsed) && parsed > 0 ? parsed : undefined
-                    );
-                    setConfirmingItemId(null);
-                  }
-                }}
-              >
-                <Text style={styles.saveBtnText}>Confirmar Ahora</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={async () => {
+              if (confirmingItemId) {
+                const parsed = parseFloat(customConfirmAmount);
+                await confirmRecurringItem(
+                  confirmingItemId,
+                  !isNaN(parsed) && parsed > 0 ? parsed : undefined
+                );
+                setConfirmingItemId(null);
+              }
+            }}
+          >
+            <Text style={styles.saveBtnText}>Confirmar Ahora</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </KeyboardSafeModal>
 
       {/* Modal Abonar a Préstamo */}
-      <Modal visible={Boolean(payingLoanId)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Registrar Abono o Pago Total</Text>
-            <Text style={styles.inputLabel}>Monto abonado ($ USD)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="decimal-pad"
-              value={loanPaymentInput}
-              onChangeText={setLoanPaymentInput}
-            />
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setPayingLoanId(null)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={async () => {
-                  if (payingLoanId) {
-                    const amt = parseFloat(loanPaymentInput);
-                    if (amt > 0) await registerLoanPayment(payingLoanId, amt);
-                    setPayingLoanId(null);
-                  }
-                }}
-              >
-                <Text style={styles.saveBtnText}>Guardar Abono</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      <KeyboardSafeModal
+        visible={Boolean(payingLoanId)}
+        animationType="fade"
+        onClose={() => setPayingLoanId(null)}
+      >
+        <Text style={styles.modalTitle}>Registrar Abono o Pago Total</Text>
+        <Text style={styles.inputLabel}>Monto abonado ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          keyboardType="decimal-pad"
+          value={loanPaymentInput}
+          onChangeText={setLoanPaymentInput}
+        />
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setPayingLoanId(null)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={async () => {
+              if (payingLoanId) {
+                const amt = parseFloat(loanPaymentInput);
+                if (amt > 0) await registerLoanPayment(payingLoanId, amt);
+                setPayingLoanId(null);
+              }
+            }}
+          >
+            <Text style={styles.saveBtnText}>Guardar Abono</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </KeyboardSafeModal>
 
       {/* Modal Abonar a Meta de Ahorro */}
-      <Modal visible={Boolean(contributingGoalId)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Abonar a Meta de Ahorro</Text>
-            <Text style={styles.inputLabel}>Monto a sumar a tu ahorro ($ USD)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. 100.00"
-              placeholderTextColor="#64748B"
-              keyboardType="decimal-pad"
-              value={goalContributionInput}
-              onChangeText={setGoalContributionInput}
-            />
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setContributingGoalId(null)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={async () => {
-                  if (contributingGoalId) {
-                    const amt = parseFloat(goalContributionInput);
-                    if (!isNaN(amt) && amt !== 0) {
-                      await updateSavingsGoalAmount(contributingGoalId, amt);
-                    }
-                    setContributingGoalId(null);
-                  }
-                }}
-              >
-                <Text style={styles.saveBtnText}>Sumar al Ahorro</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      <KeyboardSafeModal
+        visible={Boolean(contributingGoalId)}
+        animationType="fade"
+        onClose={() => setContributingGoalId(null)}
+      >
+        <Text style={styles.modalTitle}>Abonar a Meta de Ahorro</Text>
+        <Text style={styles.inputLabel}>Monto a sumar a tu ahorro ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. 100.00"
+          placeholderTextColor="#64748B"
+          keyboardType="decimal-pad"
+          value={goalContributionInput}
+          onChangeText={setGoalContributionInput}
+        />
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setContributingGoalId(null)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={async () => {
+              if (contributingGoalId) {
+                const amt = parseFloat(goalContributionInput);
+                if (!isNaN(amt) && amt !== 0) {
+                  await updateSavingsGoalAmount(contributingGoalId, amt);
+                }
+                setContributingGoalId(null);
+              }
+            }}
+          >
+            <Text style={styles.saveBtnText}>Sumar al Ahorro</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </KeyboardSafeModal>
 
       {/* Modal Nuevo Préstamo (Me deben / Yo debo) */}
-      <Modal visible={showLoanModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nuevo Registro de Préstamo</Text>
+      <KeyboardSafeModal
+        visible={showLoanModal}
+        animationType="slide"
+        onClose={() => setShowLoanModal(false)}
+      >
+        <Text style={styles.modalTitle}>Nuevo Registro de Préstamo</Text>
 
-            <View style={styles.segmentRow}>
-              <TouchableOpacity
-                style={[
-                  styles.segmentBtn,
-                  loanDirection === 'lent' && styles.segmentIncomeActive,
-                ]}
-                onPress={() => setLoanDirection('lent')}
-              >
-                <Text style={styles.segmentText}>Presté Dinero (Me deben)</Text>
-              </TouchableOpacity>
+        <View style={styles.segmentRow}>
+          <TouchableOpacity
+            style={[
+              styles.segmentBtn,
+              loanDirection === 'lent' && styles.segmentIncomeActive,
+            ]}
+            onPress={() => setLoanDirection('lent')}
+          >
+            <Text style={styles.segmentText}>Presté Dinero (Me deben)</Text>
+          </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.segmentBtn,
-                  loanDirection === 'borrowed' && styles.segmentExpenseActive,
-                ]}
-                onPress={() => setLoanDirection('borrowed')}
-              >
-                <Text style={styles.segmentText}>Pedí Prestado (Yo debo)</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.inputLabel}>Nombre de la Persona o Entidad</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. Juan, Hermano, Amigo..."
-              placeholderTextColor="#64748B"
-              value={personName}
-              onChangeText={setPersonName}
-            />
-
-            <Text style={styles.inputLabel}>Monto Total ($ USD)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0.00"
-              placeholderTextColor="#64748B"
-              keyboardType="decimal-pad"
-              value={loanAmount}
-              onChangeText={setLoanAmount}
-            />
-
-            <Text style={styles.inputLabel}>Nota o motivo (Opcional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. Cena, Pasaje, Zelle..."
-              placeholderTextColor="#64748B"
-              value={loanNotes}
-              onChangeText={setLoanNotes}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setShowLoanModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveLoan}>
-                <Text style={styles.saveBtnText}>Guardar Préstamo</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={[
+              styles.segmentBtn,
+              loanDirection === 'borrowed' && styles.segmentExpenseActive,
+            ]}
+            onPress={() => setLoanDirection('borrowed')}
+          >
+            <Text style={styles.segmentText}>Pedí Prestado (Yo debo)</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <Text style={styles.inputLabel}>Nombre de la Persona o Entidad</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Juan, Hermano, Amigo..."
+          placeholderTextColor="#64748B"
+          value={personName}
+          onChangeText={setPersonName}
+        />
+
+        <Text style={styles.inputLabel}>Monto Total ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="0.00"
+          placeholderTextColor="#64748B"
+          keyboardType="decimal-pad"
+          value={loanAmount}
+          onChangeText={setLoanAmount}
+        />
+
+        <Text style={styles.inputLabel}>Nota o motivo (Opcional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Cena, Pasaje, Zelle..."
+          placeholderTextColor="#64748B"
+          value={loanNotes}
+          onChangeText={setLoanNotes}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowLoanModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveLoan}>
+            <Text style={styles.saveBtnText}>Guardar Préstamo</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
 
       {/* Modal Nueva Meta de Ahorro */}
-      <Modal visible={showGoalModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nueva Meta de Ahorro</Text>
+      <KeyboardSafeModal
+        visible={showGoalModal}
+        animationType="slide"
+        onClose={() => setShowGoalModal(false)}
+      >
+        <Text style={styles.modalTitle}>Nueva Meta de Ahorro</Text>
 
-            <Text style={styles.inputLabel}>Nombre de la Meta</Text>
+        <Text style={styles.inputLabel}>Nombre de la Meta</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Viaje, PC Gamer, Fondo de Emergencia..."
+          placeholderTextColor="#64748B"
+          value={goalTitle}
+          onChangeText={setGoalTitle}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Meta Total ($ USD)</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Viaje, PC Gamer, Fondo de Emergencia..."
+              placeholder="1500.00"
               placeholderTextColor="#64748B"
-              value={goalTitle}
-              onChangeText={setGoalTitle}
+              keyboardType="decimal-pad"
+              value={goalTarget}
+              onChangeText={setGoalTarget}
             />
-
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Meta Total ($ USD)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="1500.00"
-                  placeholderTextColor="#64748B"
-                  keyboardType="decimal-pad"
-                  value={goalTarget}
-                  onChangeText={setGoalTarget}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Ya Ahorrado ($ USD)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0.00"
-                  placeholderTextColor="#64748B"
-                  keyboardType="decimal-pad"
-                  value={goalSaved}
-                  onChangeText={setGoalSaved}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.inputLabel}>Ícono</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {GENERAL_ICONS.slice(0, 20).map((item) => (
-                <TouchableOpacity
-                  key={item.icon}
-                  style={[
-                    styles.brandQuickChip,
-                    goalIcon === item.icon && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
-                  ]}
-                  onPress={() => setGoalIcon(item.icon)}
-                >
-                  <SmartIcon iconName={item.icon} color="#38BDF8" size={16} boxSize={26} />
-                  <Text style={styles.brandQuickText}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setShowGoalModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveGoal}>
-                <Text style={styles.saveBtnText}>Crear Meta</Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        </View>
-      </Modal>
-
-      {/* Modal Crear Nuevo Recurrente */}
-      <Modal visible={showAddRecModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nuevo Gasto / Ingreso Recurrente</Text>
-
-            <View style={styles.segmentRow}>
-              <TouchableOpacity
-                style={[styles.segmentBtn, type === 'expense' && styles.segmentExpenseActive]}
-                onPress={() => {
-                  setType('expense');
-                  const first = categories.find((c) => c.type === 'expense');
-                  if (first) setSelectedCategoryId(first.id);
-                }}
-              >
-                <Text style={styles.segmentText}>Gasto Recurrente</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.segmentBtn, type === 'income' && styles.segmentIncomeActive]}
-                onPress={() => {
-                  setType('income');
-                  const first = categories.find((c) => c.type === 'income');
-                  if (first) setSelectedCategoryId(first.id);
-                }}
-              >
-                <Text style={styles.segmentText}>Ingreso Recurrente</Text>
-              </TouchableOpacity>
-            </View>
-
-            {type === 'expense' && (
-              <>
-                <Text style={styles.inputLabel}>Atajos de Marcas y Servicios</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-                  {BRAND_PRESETS.map((brand) => (
-                    <TouchableOpacity
-                      key={brand.id}
-                      style={[
-                        styles.brandQuickChip,
-                        title === brand.label && {
-                          borderColor: brand.color,
-                          backgroundColor: brand.color + '28',
-                        },
-                      ]}
-                      onPress={() => setTitle(brand.label)}
-                    >
-                      <SmartIcon
-                        titleForAutoBrand={brand.label}
-                        size={16}
-                        boxSize={26}
-                      />
-                      <Text style={styles.brandQuickText}>{brand.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </>
-            )}
-
-            <Text style={styles.inputLabel}>Concepto (Ej. Netflix, Steam, Renta, Quincena)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nombre del gasto o ingreso"
-              placeholderTextColor="#64748B"
-              value={title}
-              onChangeText={setTitle}
-            />
-
-            <Text style={styles.inputLabel}>Monto Estimado ($ USD)</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Ya Ahorrado ($ USD)</Text>
             <TextInput
               style={styles.input}
               placeholder="0.00"
               placeholderTextColor="#64748B"
               keyboardType="decimal-pad"
-              value={amount}
-              onChangeText={setAmount}
+              value={goalSaved}
+              onChangeText={setGoalSaved}
             />
-
-            <Text style={styles.inputLabel}>Fecha del Próximo Vencimiento (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              value={nextDueDate}
-              onChangeText={setNextDueDate}
-            />
-
-            <Text style={styles.inputLabel}>🔔 Recordatorio en Android antes del vencimiento</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
-              {[
-                { days: 1, label: '1 día antes' },
-                { days: 2, label: '2 días antes' },
-                { days: 3, label: '3 días antes' },
-                { days: 0, label: 'El mismo día' },
-              ].map((opt) => (
-                <TouchableOpacity
-                  key={opt.days}
-                  style={[
-                    styles.chip,
-                    { marginRight: 0, flex: 1, alignItems: 'center', paddingHorizontal: 6 },
-                    reminderDaysBefore === opt.days && {
-                      borderColor: '#38BDF8',
-                      backgroundColor: '#0C4A6E',
-                    },
-                  ]}
-                  onPress={() => setReminderDaysBefore(opt.days)}
-                >
-                  <Text style={[styles.chipText, { fontSize: 11 }]}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.inputLabel}>Frecuencia</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {(['weekly', 'biweekly', 'monthly', 'yearly'] as RecurrenceFrequency[]).map((freq) => (
-                <TouchableOpacity
-                  key={freq}
-                  style={[
-                    styles.chip,
-                    frequency === freq && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
-                  ]}
-                  onPress={() => setFrequency(freq)}
-                >
-                  <Text style={styles.chipText}>{frequencyLabel[freq]}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <Text style={styles.inputLabel}>Cuenta donde se aplicará al confirmar</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {accounts.map((acc) => (
-                <TouchableOpacity
-                  key={acc.id}
-                  style={[
-                    styles.chip,
-                    selectedAccountId === acc.id && {
-                      borderColor: '#38BDF8',
-                      backgroundColor: '#0C4A6E',
-                    },
-                  ]}
-                  onPress={() => setSelectedAccountId(acc.id)}
-                >
-                  <Text style={styles.chipText}>{acc.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <Text style={styles.inputLabel}>Categoría</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {categories
-                .filter((c) => c.type === type)
-                .map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.chip,
-                      selectedCategoryId === cat.id && {
-                        borderColor: cat.color,
-                        backgroundColor: cat.color + '33',
-                      },
-                    ]}
-                    onPress={() => setSelectedCategoryId(cat.id)}
-                  >
-                    <Text style={styles.chipText}>{cat.name}</Text>
-                  </TouchableOpacity>
-                ))}
-            </ScrollView>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddRecModal(false)}>
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveRecurring}>
-                <Text style={styles.saveBtnText}>Programar</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
-      </Modal>
+
+        <Text style={styles.inputLabel}>Ícono</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {GENERAL_ICONS.slice(0, 20).map((item) => (
+            <TouchableOpacity
+              key={item.icon}
+              style={[
+                styles.brandQuickChip,
+                goalIcon === item.icon && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
+              ]}
+              onPress={() => setGoalIcon(item.icon)}
+            >
+              <SmartIcon iconName={item.icon} color="#38BDF8" size={16} boxSize={26} />
+              <Text style={styles.brandQuickText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowGoalModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveGoal}>
+            <Text style={styles.saveBtnText}>Crear Meta</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
+
+      {/* Modal Crear Nuevo Recurrente */}
+      <KeyboardSafeModal
+        visible={showAddRecModal}
+        animationType="slide"
+        onClose={() => setShowAddRecModal(false)}
+      >
+        <Text style={styles.modalTitle}>Nuevo Gasto / Ingreso Recurrente</Text>
+
+        <View style={styles.segmentRow}>
+          <TouchableOpacity
+            style={[styles.segmentBtn, type === 'expense' && styles.segmentExpenseActive]}
+            onPress={() => {
+              setType('expense');
+              const first = categories.find((c) => c.type === 'expense');
+              if (first) setSelectedCategoryId(first.id);
+            }}
+          >
+            <Text style={styles.segmentText}>Gasto Recurrente</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.segmentBtn, type === 'income' && styles.segmentIncomeActive]}
+            onPress={() => {
+              setType('income');
+              const first = categories.find((c) => c.type === 'income');
+              if (first) setSelectedCategoryId(first.id);
+            }}
+          >
+            <Text style={styles.segmentText}>Ingreso Recurrente</Text>
+          </TouchableOpacity>
+        </View>
+
+        {type === 'expense' && (
+          <>
+            <Text style={styles.inputLabel}>Atajos de Marcas y Servicios</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+              {BRAND_PRESETS.map((brand) => (
+                <TouchableOpacity
+                  key={brand.id}
+                  style={[
+                    styles.brandQuickChip,
+                    title === brand.label && {
+                      borderColor: brand.color,
+                      backgroundColor: brand.color + '28',
+                    },
+                  ]}
+                  onPress={() => setTitle(brand.label)}
+                >
+                  <SmartIcon
+                    titleForAutoBrand={brand.label}
+                    size={16}
+                    boxSize={26}
+                  />
+                  <Text style={styles.brandQuickText}>{brand.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
+        <Text style={styles.inputLabel}>Concepto (Ej. Netflix, Steam, Renta, Quincena)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Nombre del gasto o ingreso"
+          placeholderTextColor="#64748B"
+          value={title}
+          onChangeText={setTitle}
+        />
+
+        <Text style={styles.inputLabel}>Monto Estimado ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="0.00"
+          placeholderTextColor="#64748B"
+          keyboardType="decimal-pad"
+          value={amount}
+          onChangeText={setAmount}
+        />
+
+        <Text style={styles.inputLabel}>Fecha del Próximo Vencimiento (YYYY-MM-DD)</Text>
+        <TextInput
+          style={styles.input}
+          value={nextDueDate}
+          onChangeText={setNextDueDate}
+        />
+
+        <Text style={styles.inputLabel}>🔔 Recordatorio en Android antes del vencimiento</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+          {[
+            { days: 1, label: '1 día antes' },
+            { days: 2, label: '2 días antes' },
+            { days: 3, label: '3 días antes' },
+            { days: 0, label: 'El mismo día' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.days}
+              style={[
+                styles.chip,
+                { marginRight: 0, flex: 1, alignItems: 'center', paddingHorizontal: 6 },
+                reminderDaysBefore === opt.days && {
+                  borderColor: '#38BDF8',
+                  backgroundColor: '#0C4A6E',
+                },
+              ]}
+              onPress={() => setReminderDaysBefore(opt.days)}
+            >
+              <Text style={[styles.chipText, { fontSize: 11 }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.inputLabel}>Frecuencia</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {(['weekly', 'biweekly', 'monthly', 'yearly'] as RecurrenceFrequency[]).map((freq) => (
+            <TouchableOpacity
+              key={freq}
+              style={[
+                styles.chip,
+                frequency === freq && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
+              ]}
+              onPress={() => setFrequency(freq)}
+            >
+              <Text style={styles.chipText}>{frequencyLabel[freq]}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <Text style={styles.inputLabel}>Cuenta donde se aplicará al confirmar</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                selectedAccountId === acc.id && {
+                  borderColor: '#38BDF8',
+                  backgroundColor: '#0C4A6E',
+                },
+              ]}
+              onPress={() => setSelectedAccountId(acc.id)}
+            >
+              <Text style={styles.chipText}>{acc.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <Text style={styles.inputLabel}>Categoría</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {categories
+            .filter((c) => c.type === type)
+            .map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[
+                  styles.chip,
+                  selectedCategoryId === cat.id && {
+                    borderColor: cat.color,
+                    backgroundColor: cat.color + '33',
+                  },
+                ]}
+                onPress={() => setSelectedCategoryId(cat.id)}
+              >
+                <Text style={styles.chipText}>{cat.name}</Text>
+              </TouchableOpacity>
+            ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddRecModal(false)}>
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveRecurring}>
+            <Text style={styles.saveBtnText}>Programar</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
     </View>
   );
 }

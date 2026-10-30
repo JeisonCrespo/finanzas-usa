@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
 import { TransactionType } from '../../src/types/finance';
 import { SmartIcon } from '../../src/components/BrandIcon';
+import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
 
 export default function DashboardScreen() {
   const {
@@ -172,6 +173,39 @@ export default function DashboardScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Desglose rápido por dueño de cuentas separadas para no mezclar dinero ajeno */}
+          {accounts.some((a) => (!a.includeInTotal && a.type !== 'credit') || a.ownerName) && (
+            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#1E293B' }}>
+              <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>
+                👤 Detalle de Cuentas Separadas / Dinero de otros:
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {accounts
+                  .filter((a) => (!a.includeInTotal && a.type !== 'credit') || a.ownerName)
+                  .map((sep) => (
+                    <View
+                      key={sep.id}
+                      style={{
+                        backgroundColor: '#1E1B4B',
+                        borderWidth: 1,
+                        borderColor: '#4C1D95',
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                      }}
+                    >
+                      <Text style={{ color: '#E9D5FF', fontSize: 11, fontWeight: '700' }}>
+                        {sep.ownerName ? `${sep.ownerName}: ` : `${sep.name}: `}
+                        <Text style={{ color: '#F8FAFC' }}>
+                          ${sep.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </Text>
+                      </Text>
+                    </View>
+                  ))}
+              </View>
+            </View>
+          )}
 
           <View style={styles.quickActionRow}>
             <TouchableOpacity
@@ -393,10 +427,12 @@ export default function DashboardScreen() {
       </ScrollView>
 
       {/* Modal para Agregar Gasto, Ingreso o Transferencia entre Cuentas con Comisión Opcional */}
-      <Modal visible={showAddModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nuevo Movimiento</Text>
+      <KeyboardSafeModal
+        visible={showAddModal}
+        animationType="slide"
+        onClose={() => setShowAddModal(false)}
+      >
+        <Text style={styles.modalTitle}>Nuevo Movimiento</Text>
 
             <View style={styles.segmentRow}>
               <TouchableOpacity
@@ -553,9 +589,7 @@ export default function DashboardScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardSafeModal>
     </View>
   );
 }

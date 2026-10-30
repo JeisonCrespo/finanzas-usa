@@ -58,6 +58,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       plaid_item_id TEXT,
       color TEXT NOT NULL,
       last_synced_at TEXT,
+      owner_name TEXT,
       credit_limit REAL DEFAULT 0,
       closing_day INTEGER DEFAULT 0,
       due_day INTEGER DEFAULT 0
@@ -146,6 +147,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN credit_limit REAL DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN closing_day INTEGER DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN due_day INTEGER DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN owner_name TEXT;`); } catch {}
   try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN reminder_days INTEGER NOT NULL DEFAULT 1;`); } catch {}
 
   const initializedFlag = await db.getFirstAsync<{ value: string }>(

@@ -10,7 +10,8 @@ export interface USBankTemplate {
 }
 
 /**
- * Catálogo directo de los principales bancos de EE. UU. (Encabezado por Wells Fargo, Chase y Truist)
+ * Catálogo directo de los principales bancos y billeteras en EE. UU.
+ * Incluye Wells Fargo, Chase, Truist, PayPal, Uber, Bank of America, Capital One, Citibank, Amex y U.S. Bank
  */
 export const US_MAJOR_BANKS: USBankTemplate[] = [
   {
@@ -42,6 +43,26 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
     defaultSavingsName: 'Truist One Savings',
     defaultCreditName: 'Truist Enjoy Cash Card',
     defaultMask: '6104',
+  },
+  {
+    id: 'paypal',
+    institution: 'PayPal',
+    shortName: 'PayPal',
+    color: '#0070BA',
+    defaultCheckingName: 'PayPal Balance / Debit Card',
+    defaultSavingsName: 'PayPal Savings (APY)',
+    defaultCreditName: 'PayPal Cashback Mastercard',
+    defaultMask: '7710',
+  },
+  {
+    id: 'uber',
+    institution: 'Uber Pro Card / Uber Wallet',
+    shortName: 'Uber',
+    color: '#10B981',
+    defaultCheckingName: 'Uber Pro Card / Driver Balance',
+    defaultSavingsName: 'Uber Pro Backup / Savings',
+    defaultCreditName: 'Uber Visa Card',
+    defaultMask: '8821',
   },
   {
     id: 'bofa',

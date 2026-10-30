@@ -6,7 +6,6 @@ import {
   ScrollView,
   Switch,
   TouchableOpacity,
-  Modal,
   TextInput,
   Alert,
 } from 'react-native';
@@ -17,6 +16,17 @@ import {
   USBankTemplate,
 } from '../../src/services/plaidService';
 import { AccountType, BankAccount } from '../../src/types/finance';
+import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
+
+const OWNER_QUICK_CHIPS = [
+  'Mío (Ahorro)',
+  'Mamá',
+  'Papá',
+  'Hermano/a',
+  'Pareja',
+  'Familiar',
+  'Guardado de otro',
+];
 
 export default function AccountsScreen() {
   const {
@@ -40,13 +50,14 @@ export default function AccountsScreen() {
   const [smartImportText, setSmartImportText] = useState('');
   const [smartImportAccId, setSmartImportAccId] = useState('');
 
-  // Estado para agregar banco de EE. UU. (Wells Fargo, Chase, Truist, etc.)
+  // Estado para agregar banco de EE. UU. (Wells Fargo, Chase, Truist, PayPal, Uber, etc.)
   const [selectedBankTemplate, setSelectedBankTemplate] = useState<USBankTemplate>(US_MAJOR_BANKS[0]);
   const [usBankAccountType, setUsBankAccountType] = useState<AccountType>('checking');
   const [usBankCustomName, setUsBankCustomName] = useState(US_MAJOR_BANKS[0].defaultCheckingName);
   const [usBankBalance, setUsBankBalance] = useState('');
   const [usBankMask, setUsBankMask] = useState('');
   const [usBankIncludeTotal, setUsBankIncludeTotal] = useState(true);
+  const [usBankOwnerName, setUsBankOwnerName] = useState('');
   const [usBankCreditLimit, setUsBankCreditLimit] = useState('');
   const [usBankClosingDay, setUsBankClosingDay] = useState('');
   const [usBankDueDay, setUsBankDueDay] = useState('');
@@ -57,6 +68,7 @@ export default function AccountsScreen() {
   const [balance, setBalance] = useState('');
   const [accountType, setAccountType] = useState<AccountType>('checking');
   const [includeInTotal, setIncludeInTotal] = useState(true);
+  const [manualOwnerName, setManualOwnerName] = useState('');
   const [creditLimit, setCreditLimit] = useState('');
   const [closingDay, setClosingDay] = useState('');
   const [dueDay, setDueDay] = useState('');
@@ -67,11 +79,12 @@ export default function AccountsScreen() {
   const [editClosing, setEditClosing] = useState('');
   const [editDue, setEditDue] = useState('');
 
-  // Modal para editar el saldo real y últimos 4 dígitos de cualquier cuenta
+  // Modal para editar el saldo real, nombre, dueño y últimos 4 dígitos de cualquier cuenta
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
   const [editAccName, setEditAccName] = useState('');
   const [editAccBalance, setEditAccBalance] = useState('');
   const [editAccMask, setEditAccMask] = useState('');
+  const [editAccOwnerName, setEditAccOwnerName] = useState('');
 
   // Estado para transferir entre cuentas
   const [fromAccId, setFromAccId] = useState('');
@@ -79,6 +92,11 @@ export default function AccountsScreen() {
   const [transferAmount, setTransferAmount] = useState('');
   const [transferFee, setTransferFee] = useState('');
   const [transferNote, setTransferNote] = useState('');
+
+  // Cuentas separadas (no tarjetas de crédito) o con dueño específico
+  const separatedAccounts = accounts.filter(
+    (a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName?.trim())
+  );
 
   const handleSelectUSBankTemplate = (bank: USBankTemplate, typeOverride?: AccountType) => {
     const targetType = typeOverride || usBankAccountType;
@@ -109,6 +127,7 @@ export default function AccountsScreen() {
       currency: 'USD',
       includeInTotal: usBankAccountType === 'credit' ? false : usBankIncludeTotal,
       color: selectedBankTemplate.color,
+      ownerName: usBankOwnerName.trim() || undefined,
       creditLimit: usBankAccountType === 'credit' ? parseFloat(usBankCreditLimit) || 0 : 0,
       closingDay: usBankAccountType === 'credit' ? parseInt(usBankClosingDay, 10) || 0 : 0,
       dueDay: usBankAccountType === 'credit' ? parseInt(usBankDueDay, 10) || 0 : 0,
@@ -116,6 +135,7 @@ export default function AccountsScreen() {
 
     setUsBankBalance('');
     setUsBankMask('');
+    setUsBankOwnerName('');
     setUsBankCreditLimit('');
     setUsBankClosingDay('');
     setUsBankDueDay('');
@@ -134,6 +154,7 @@ export default function AccountsScreen() {
       currency: 'USD',
       includeInTotal: accountType === 'credit' ? false : includeInTotal,
       color: accountType === 'credit' ? '#E11D48' : '#0284C7',
+      ownerName: manualOwnerName.trim() || undefined,
       creditLimit: accountType === 'credit' ? parseFloat(creditLimit) || 0 : 0,
       closingDay: accountType === 'credit' ? parseInt(closingDay, 10) || 0 : 0,
       dueDay: accountType === 'credit' ? parseInt(dueDay, 10) || 0 : 0,
@@ -142,6 +163,7 @@ export default function AccountsScreen() {
     setName('');
     setInstitution('');
     setBalance('');
+    setManualOwnerName('');
     setCreditLimit('');
     setClosingDay('');
     setDueDay('');
@@ -197,23 +219,63 @@ export default function AccountsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Resumen de separación de cuentas */}
         <View style={styles.summaryBanner}>
           <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel}>SE SUMAN AL TOTAL</Text>
+            <Text style={styles.summaryLabel}>MI SALDO (SE SUMA AL TOTAL)</Text>
             <Text style={styles.summaryIncludedValue}>
               ${includedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel}>SEPARADAS / TARJETAS</Text>
+            <Text style={styles.summaryLabel}>SEPARADAS / DE OTROS</Text>
             <Text style={styles.summaryExcludedValue}>
               ${excludedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
           </View>
         </View>
+
+        {/* Desglose individual de Cuentas Separadas / Dinero de otras personas */}
+        {separatedAccounts.length > 0 && (
+          <View style={styles.ownersBreakdownCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Ionicons name="people-circle-outline" size={18} color="#C084FC" />
+              <Text style={styles.ownersBreakdownTitle}>
+                Control de Dinero Separado / Guardado por Persona
+              </Text>
+            </View>
+            {separatedAccounts.map((sepAcc) => (
+              <View key={sepAcc.id} style={styles.ownerItemRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                  <View style={[styles.ownerDot, { backgroundColor: sepAcc.color }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.ownerItemPerson}>
+                      👤 {sepAcc.ownerName?.trim() || 'Cuenta Separada (Sin nombre asignado)'}
+                    </Text>
+                    <Text style={styles.ownerItemSub}>
+                      {sepAcc.name} • {sepAcc.institution}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setEditingAccount(sepAcc);
+                    setEditAccName(sepAcc.name);
+                    setEditAccBalance(String(sepAcc.balance));
+                    setEditAccMask(sepAcc.mask || '');
+                    setEditAccOwnerName(sepAcc.ownerName || '');
+                  }}
+                >
+                  <Text style={styles.ownerItemAmount}>
+                    ${sepAcc.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Botones Principales: Agregar Banco US, Pasar Dinero y Cuenta Manual */}
         <View style={styles.topButtonsRow}>
@@ -221,11 +283,12 @@ export default function AccountsScreen() {
             style={styles.plaidConnectBtn}
             onPress={() => {
               handleSelectUSBankTemplate(US_MAJOR_BANKS[0], 'checking');
+              setUsBankOwnerName('');
               setShowUSBankModal(true);
             }}
           >
             <Ionicons name="business-outline" size={18} color="#0F172A" />
-            <Text style={styles.plaidConnectBtnText}>Agregar Banco US</Text>
+            <Text style={styles.plaidConnectBtnText}>Agregar Banco / App</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -238,13 +301,16 @@ export default function AccountsScreen() {
 
           <TouchableOpacity
             style={styles.manualBtn}
-            onPress={() => setShowManualModal(true)}
+            onPress={() => {
+              setManualOwnerName('');
+              setShowManualModal(true);
+            }}
           >
             <Ionicons name="add-outline" size={20} color="#F8FAFC" />
           </TouchableOpacity>
         </View>
 
-        {/* Botón: Escáner de Alertas Bancarias y CSV (Wells Fargo, Chase, Truist) */}
+        {/* Botón: Escáner de Alertas Bancarias y CSV (Wells Fargo, Chase, Truist, PayPal, Uber) */}
         <TouchableOpacity
           style={{
             flexDirection: 'row',
@@ -268,14 +334,14 @@ export default function AccountsScreen() {
               Importar Gastos de Alerta / SMS / CSV
             </Text>
             <Text style={{ color: '#86EFAC', fontSize: 11, marginTop: 1 }}>
-              Pega notificaciones de Wells Fargo, Chase, Truist o líneas CSV y se registran solas.
+              Pega notificaciones de Wells Fargo, Chase, Truist, PayPal o Uber y se registran solas.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#4ADE80" />
         </TouchableOpacity>
 
         <Text style={styles.helperNote}>
-          Administra tus cuentas de Wells Fargo, Chase, Truist y más. Elige cuáles se suman a tu Saldo Total y controla el % de utilización de tus tarjetas de crédito.
+          Administra tus cuentas de Wells Fargo, Chase, Truist, PayPal, Uber y más. En las cuentas separadas puedes anotar de quién es ese dinero para no mezclarlo con el tuyo.
         </Text>
 
         {/* Lista de Cuentas y Tarjetas de Crédito */}
@@ -299,6 +365,10 @@ export default function AccountsScreen() {
                     name={
                       isCredit
                         ? 'card-outline'
+                        : acc.institution.toLowerCase().includes('paypal')
+                        ? 'logo-paypal'
+                        : acc.institution.toLowerCase().includes('uber')
+                        ? 'car-sport-outline'
                         : acc.isPlaidConnected
                         ? 'shield-checkmark-outline'
                         : 'wallet-outline'
@@ -319,8 +389,29 @@ export default function AccountsScreen() {
                       ? 'Tarjeta de Crédito US'
                       : acc.type === 'savings'
                       ? 'Savings / Ahorros'
-                      : 'Checking / Corriente'}
+                      : 'Checking / Balance'}
                   </Text>
+
+                  {/* Etiqueta de dueño del dinero cuando tiene ownerName o está separada */}
+                  {(acc.ownerName || (!acc.includeInTotal && !isCredit)) && (
+                    <TouchableOpacity
+                      style={styles.ownerBadgePill}
+                      onPress={() => {
+                        setEditingAccount(acc);
+                        setEditAccName(acc.name);
+                        setEditAccBalance(String(acc.balance));
+                        setEditAccMask(acc.mask || '');
+                        setEditAccOwnerName(acc.ownerName || '');
+                      }}
+                    >
+                      <Ionicons name="person-outline" size={12} color="#E9D5FF" />
+                      <Text style={styles.ownerBadgeText}>
+                        {acc.ownerName
+                          ? `Dinero de: ${acc.ownerName}`
+                          : 'Asignar de quién es este dinero'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 <View style={{ alignItems: 'flex-end' }}>
@@ -416,12 +507,12 @@ export default function AccountsScreen() {
                   <Text
                     style={[
                       styles.switchLabel,
-                      { color: acc.includeInTotal ? '#38BDF8' : '#94A3B8' },
+                      { color: acc.includeInTotal ? '#38BDF8' : '#C084FC' },
                     ]}
                   >
                     {acc.includeInTotal
-                      ? 'Incluida en el Saldo Total'
-                      : 'Separada (No se suma al total)'}
+                      ? 'Incluida en mi Saldo Total'
+                      : `Separada${acc.ownerName ? ` (${acc.ownerName})` : ''}`}
                   </Text>
                 </View>
 
@@ -443,11 +534,12 @@ export default function AccountsScreen() {
                       setEditAccName(acc.name);
                       setEditAccBalance(String(acc.balance));
                       setEditAccMask(acc.mask || '');
+                      setEditAccOwnerName(acc.ownerName || '');
                     }}
                   >
                     <Ionicons name="create-outline" size={14} color="#38BDF8" />
                     <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>
-                      Editar Saldo
+                      Editar / Dueño
                     </Text>
                   </TouchableOpacity>
 
@@ -461,652 +553,765 @@ export default function AccountsScreen() {
         })}
       </ScrollView>
 
-      {/* Modal para Editar el Saldo Real, Nombre y 4 Dígitos de cualquier Cuenta */}
-      <Modal visible={Boolean(editingAccount)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              Editar Cuenta: {editingAccount?.institution}
-            </Text>
-            <Text style={styles.modalSub}>
-              Actualiza el saldo actual en dólares, el nombre o los últimos 4 dígitos de tu cuenta.
-            </Text>
+      {/* Modal para Editar el Saldo Real, Nombre, Dueño y 4 Dígitos de cualquier Cuenta */}
+      <KeyboardSafeModal
+        visible={Boolean(editingAccount)}
+        animationType="fade"
+        onClose={() => setEditingAccount(null)}
+      >
+        <Text style={styles.modalTitle}>
+          Editar Cuenta: {editingAccount?.institution}
+        </Text>
+        <Text style={styles.modalSub}>
+          Actualiza el saldo actual en dólares, el nombre o indica de quién es este dinero si es una cuenta separada.
+        </Text>
 
-            <Text style={styles.inputLabel}>Nombre de tu Cuenta</Text>
+        <Text style={styles.inputLabel}>Nombre de la Cuenta</Text>
+        <TextInput
+          style={styles.input}
+          value={editAccName}
+          onChangeText={setEditAccName}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 2 }}>
+            <Text style={styles.inputLabel}>
+              {editingAccount?.type === 'credit'
+                ? 'Deuda Actual en Tarjeta ($ USD)'
+                : 'Saldo Actual ($ USD)'}
+            </Text>
             <TextInput
               style={styles.input}
-              value={editAccName}
-              onChangeText={setEditAccName}
+              keyboardType="decimal-pad"
+              value={editAccBalance}
+              onChangeText={setEditAccBalance}
             />
-
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 2 }}>
-                <Text style={styles.inputLabel}>
-                  {editingAccount?.type === 'credit'
-                    ? 'Deuda Actual en Tarjeta ($ USD)'
-                    : 'Saldo Actual ($ USD)'}
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="decimal-pad"
-                  value={editAccBalance}
-                  onChangeText={setEditAccBalance}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Últimos 4 dígitos</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  value={editAccMask}
-                  onChangeText={setEditAccMask}
-                />
-              </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
-                onPress={() => setEditingAccount(null)}
-              >
-                <Text style={styles.closeModalBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
-                onPress={async () => {
-                  if (editingAccount) {
-                    await updateAccountBalanceAndMask(
-                      editingAccount.id,
-                      editAccName || editingAccount.name,
-                      parseFloat(editAccBalance) || 0,
-                      editAccMask
-                    );
-                    setEditingAccount(null);
-                  }
-                }}
-              >
-                <Text style={styles.realPlaidBtnText}>Guardar Cambios</Text>
-              </TouchableOpacity>
-            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Últimos 4 dígitos</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="number-pad"
+              maxLength={4}
+              value={editAccMask}
+              onChangeText={setEditAccMask}
+            />
           </View>
         </View>
-      </Modal>
+
+        <Text style={styles.inputLabel}>
+          👤 ¿De quién es este dinero? (Para cuentas separadas o dinero guardado)
+        </Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Mamá, Hermano, Pareja, Guardado para Juan..."
+          placeholderTextColor="#64748B"
+          value={editAccOwnerName}
+          onChangeText={setEditAccOwnerName}
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+          {OWNER_QUICK_CHIPS.map((label) => (
+            <TouchableOpacity
+              key={label}
+              style={[
+                styles.chip,
+                editAccOwnerName === label && {
+                  borderColor: '#C084FC',
+                  backgroundColor: '#3B0764',
+                },
+              ]}
+              onPress={() => setEditAccOwnerName(label)}
+            >
+              <Text style={styles.chipText}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+            onPress={() => setEditingAccount(null)}
+          >
+            <Text style={styles.closeModalBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+            onPress={async () => {
+              if (editingAccount) {
+                await updateAccountBalanceAndMask(
+                  editingAccount.id,
+                  editAccName || editingAccount.name,
+                  parseFloat(editAccBalance) || 0,
+                  editAccMask,
+                  editAccOwnerName
+                );
+                setEditingAccount(null);
+              }
+            }}
+          >
+            <Text style={styles.realPlaidBtnText}>Guardar Cambios</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
 
       {/* Modal de Importación Inteligente de Alertas / SMS / CSV */}
-      <Modal visible={showSmartImportModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              ⚡ Importar Alertas o CSV (Wells Fargo, Chase, Truist)
+      <KeyboardSafeModal
+        visible={showSmartImportModal}
+        animationType="slide"
+        onClose={() => setShowSmartImportModal(false)}
+      >
+        <Text style={styles.modalTitle}>
+          ⚡ Importar Alertas o CSV (Wells, Chase, Truist, PayPal, Uber)
+        </Text>
+        <Text style={styles.modalSub}>
+          Pega aquí una o varias notificaciones/SMS de tu banco o filas CSV. La app detecta comercio, monto, ícono y cuenta automáticamente.
+        </Text>
+
+        <Text style={styles.inputLabel}>Cuenta por defecto (si la alerta no dice el banco)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                smartImportAccId === acc.id && {
+                  borderColor: '#4ADE80',
+                  backgroundColor: '#14532D',
+                },
+              ]}
+              onPress={() => setSmartImportAccId(acc.id)}
+            >
+              <Text style={styles.chipText}>{acc.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <Text style={styles.inputLabel}>Pega tus alertas o líneas CSV aquí:</Text>
+          <TouchableOpacity
+            onPress={() =>
+              setSmartImportText(
+                `Wells Fargo: Purchase of $42.50 at Walmart with card ending 3319\nChase: You made a $19.99 transaction with STEAM GAMES on card 4829\nPayPal: You sent $35.00 to Uber Eats`
+              )
+            }
+          >
+            <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>
+              + Poner Ejemplo
             </Text>
-            <Text style={styles.modalSub}>
-              Pega aquí una o varias notificaciones/SMS de tu banco, o filas de tu archivo CSV de Wells Fargo, Chase o Truist. La app detecta comercio, monto, ícono y banco automáticamente.
-            </Text>
-
-            <Text style={styles.inputLabel}>Cuenta por defecto (si la alerta no dice los 4 dígitos)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {accounts.map((acc) => (
-                <TouchableOpacity
-                  key={acc.id}
-                  style={[
-                    styles.chip,
-                    smartImportAccId === acc.id && {
-                      borderColor: '#4ADE80',
-                      backgroundColor: '#14532D',
-                    },
-                  ]}
-                  onPress={() => setSmartImportAccId(acc.id)}
-                >
-                  <Text style={styles.chipText}>{acc.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-              <Text style={styles.inputLabel}>Pega tus alertas o líneas CSV aquí:</Text>
-              <TouchableOpacity
-                onPress={() =>
-                  setSmartImportText(
-                    `Wells Fargo: Purchase of $42.50 at Walmart with card ending 3319\nChase: You made a $19.99 transaction with STEAM GAMES on card 4829\nTruist Alert: A $15.49 transaction at NETFLIX was posted to account 6104`
-                  )
-                }
-              >
-                <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>
-                  + Poner Ejemplo
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={[styles.input, { height: 110, textAlignVertical: 'top', marginTop: 4 }]}
-              placeholder={
-                'Ejemplos:\n• Chase: You made a $24.50 transaction with AMAZON\n• Wells Fargo: Purchase of $45.00 at PUBLIX\n• O escribe rápido: "Walmart $38.20"'
-              }
-              placeholderTextColor="#64748B"
-              multiline
-              value={smartImportText}
-              onChangeText={setSmartImportText}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity
-                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
-                onPress={() => setShowSmartImportModal(false)}
-              >
-                <Text style={styles.closeModalBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
-                onPress={async () => {
-                  const imported = await importBankMovementsText(
-                    smartImportText,
-                    smartImportAccId || accounts[0]?.id
-                  );
-                  if (imported > 0) {
-                    setSmartImportText('');
-                    setShowSmartImportModal(false);
-                    Alert.alert(
-                      '✓ Movimientos Aplicados',
-                      `Se procesaron ${imported} movimientos automáticamente y se actualizaron tus saldos.`
-                    );
-                  } else {
-                    Alert.alert(
-                      'No se detectaron montos',
-                      'Asegúrate de que el texto incluya el signo de dólar (ej. $25.00).'
-                    );
-                  }
-                }}
-              >
-                <Text style={styles.realPlaidBtnText}>Procesar Gastos</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <TextInput
+          style={[styles.input, { height: 110, textAlignVertical: 'top', marginTop: 4 }]}
+          placeholder={
+            'Ejemplos:\n• Chase: You made a $24.50 transaction with AMAZON\n• PayPal: You paid $18.00 to UBER\n• O escribe rápido: "Walmart $38.20"'
+          }
+          placeholderTextColor="#64748B"
+          multiline
+          value={smartImportText}
+          onChangeText={setSmartImportText}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+          <TouchableOpacity
+            style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+            onPress={() => setShowSmartImportModal(false)}
+          >
+            <Text style={styles.closeModalBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+            onPress={async () => {
+              const imported = await importBankMovementsText(
+                smartImportText,
+                smartImportAccId || accounts[0]?.id
+              );
+              if (imported > 0) {
+                setSmartImportText('');
+                setShowSmartImportModal(false);
+                Alert.alert(
+                  '✓ Movimientos Aplicados',
+                  `Se procesaron ${imported} movimientos automáticamente y se actualizaron tus saldos.`
+                );
+              } else {
+                Alert.alert(
+                  'No se detectaron montos',
+                  'Asegúrate de que el texto incluya el signo de dólar (ej. $25.00).'
+                );
+              }
+            }}
+          >
+            <Text style={styles.realPlaidBtnText}>Procesar Gastos</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
 
       {/* Modal para Configurar Corte, Pago y Límite de Tarjeta de Crédito */}
-      <Modal visible={Boolean(editingCard)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              Configurar Tarjeta: {editingCard?.name}
-            </Text>
-            <Text style={styles.modalSub}>
-              En EE. UU. mantener el uso bajo el 30% antes del día de corte (Statement Closing Date) mejora tu puntaje de crédito (Credit Score).
-            </Text>
+      <KeyboardSafeModal
+        visible={Boolean(editingCard)}
+        animationType="fade"
+        onClose={() => setEditingCard(null)}
+      >
+        <Text style={styles.modalTitle}>
+          Configurar Tarjeta: {editingCard?.name}
+        </Text>
+        <Text style={styles.modalSub}>
+          En EE. UU. mantener el uso bajo el 30% antes del día de corte (Statement Closing Date) mejora tu puntaje de crédito (Credit Score).
+        </Text>
 
-            <Text style={styles.inputLabel}>Límite de Crédito Total ($ USD)</Text>
+        <Text style={styles.inputLabel}>Límite de Crédito Total ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. 3000"
+          placeholderTextColor="#64748B"
+          keyboardType="decimal-pad"
+          value={editLimit}
+          onChangeText={setEditLimit}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Día de Corte (1-31)</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. 3000"
+              placeholder="Ej. 18"
               placeholderTextColor="#64748B"
-              keyboardType="decimal-pad"
-              value={editLimit}
-              onChangeText={setEditLimit}
+              keyboardType="number-pad"
+              value={editClosing}
+              onChangeText={setEditClosing}
             />
-
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Día de Corte (1-31)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ej. 18"
-                  placeholderTextColor="#64748B"
-                  keyboardType="number-pad"
-                  value={editClosing}
-                  onChangeText={setEditClosing}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Día Límite Pago (1-31)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ej. 15"
-                  placeholderTextColor="#64748B"
-                  keyboardType="number-pad"
-                  value={editDue}
-                  onChangeText={setEditDue}
-                />
-              </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
-                onPress={() => setEditingCard(null)}
-              >
-                <Text style={styles.closeModalBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
-                onPress={handleSaveCreditCardSettings}
-              >
-                <Text style={styles.realPlaidBtnText}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Día Límite Pago (1-31)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. 15"
+              placeholderTextColor="#64748B"
+              keyboardType="number-pad"
+              value={editDue}
+              onChangeText={setEditDue}
+            />
           </View>
         </View>
-      </Modal>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+            onPress={() => setEditingCard(null)}
+          >
+            <Text style={styles.closeModalBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+            onPress={handleSaveCreditCardSettings}
+          >
+            <Text style={styles.realPlaidBtnText}>Guardar</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
 
       {/* Modal para Transferir Dinero entre Cuentas con Comisión Opcional */}
-      <Modal visible={showTransferModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Pasar Dinero o Pagar Tarjeta</Text>
-            <Text style={styles.modalSub}>
-              Mueve saldo de una cuenta a otra (o paga tu tarjeta de crédito). Si te cobraron comisión, agrégala opcionalmente.
-            </Text>
+      <KeyboardSafeModal
+        visible={showTransferModal}
+        animationType="slide"
+        onClose={() => setShowTransferModal(false)}
+      >
+        <Text style={styles.modalTitle}>Pasar Dinero o Pagar Tarjeta</Text>
+        <Text style={styles.modalSub}>
+          Mueve saldo de una cuenta a otra (o paga tu tarjeta de crédito). Si te cobraron comisión, agrégala opcionalmente.
+        </Text>
 
-            <Text style={styles.inputLabel}>De qué cuenta sale (Origen)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {accounts.map((acc) => (
-                <TouchableOpacity
-                  key={acc.id}
-                  style={[
-                    styles.chip,
-                    fromAccId === acc.id && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
-                  ]}
-                  onPress={() => setFromAccId(acc.id)}
-                >
-                  <Text style={styles.chipText}>
-                    {acc.name} (${acc.balance.toFixed(2)})
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+        <Text style={styles.inputLabel}>De qué cuenta sale (Origen)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                fromAccId === acc.id && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
+              ]}
+              onPress={() => setFromAccId(acc.id)}
+            >
+              <Text style={styles.chipText}>
+                {acc.name} (${acc.balance.toFixed(2)})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-            <Text style={styles.inputLabel}>A qué cuenta entra o qué tarjeta paga (Destino)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {accounts.map((acc) => (
-                <TouchableOpacity
-                  key={acc.id}
-                  style={[
-                    styles.chip,
-                    toAccId === acc.id && { borderColor: '#4ADE80', backgroundColor: '#14532D' },
-                  ]}
-                  onPress={() => setToAccId(acc.id)}
-                >
-                  <Text style={styles.chipText}>
-                    {acc.name} (${acc.balance.toFixed(2)})
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+        <Text style={styles.inputLabel}>A qué cuenta entra o qué tarjeta paga (Destino)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                toAccId === acc.id && { borderColor: '#4ADE80', backgroundColor: '#14532D' },
+              ]}
+              onPress={() => setToAccId(acc.id)}
+            >
+              <Text style={styles.chipText}>
+                {acc.name} (${acc.balance.toFixed(2)})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Monto a Pasar ($ USD)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0.00"
-                  placeholderTextColor="#64748B"
-                  keyboardType="decimal-pad"
-                  value={transferAmount}
-                  onChangeText={setTransferAmount}
-                />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Comisión (Opcional $)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0.00"
-                  placeholderTextColor="#64748B"
-                  keyboardType="decimal-pad"
-                  value={transferFee}
-                  onChangeText={setTransferFee}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.inputLabel}>Concepto / Nota (Opcional)</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Monto a Pasar ($ USD)</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Pago de tarjeta Chase, Zelle a Truist..."
+              placeholder="0.00"
               placeholderTextColor="#64748B"
-              value={transferNote}
-              onChangeText={setTransferNote}
+              keyboardType="decimal-pad"
+              value={transferAmount}
+              onChangeText={setTransferAmount}
             />
+          </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
-                onPress={() => setShowTransferModal(false)}
-              >
-                <Text style={styles.closeModalBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
-                onPress={handleExecuteTransfer}
-              >
-                <Text style={styles.realPlaidBtnText}>Transferir Ahora</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Comisión (Opcional $)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0.00"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={transferFee}
+              onChangeText={setTransferFee}
+            />
           </View>
         </View>
-      </Modal>
 
-      {/* Modal Directo de Bancos de EE. UU. (Wells Fargo, Chase, Truist, etc.) */}
-      <Modal visible={showUSBankModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { maxHeight: '92%' }]}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>Agregar Mi Banco en EE. UU.</Text>
-              <Text style={styles.modalSub}>
-                Selecciona tu banco (Wells Fargo, Chase, Truist, BofA, Capital One, Citi o Amex) e ingresa tu saldo actual.
-              </Text>
+        <Text style={styles.inputLabel}>Concepto / Nota (Opcional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Pago de tarjeta Chase, Zelle a Truist..."
+          placeholderTextColor="#64748B"
+          value={transferNote}
+          onChangeText={setTransferNote}
+        />
 
-              <Text style={styles.inputLabel}>
-                1. Selecciona tu Banco
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginVertical: 6 }}
-              >
-                {US_MAJOR_BANKS.map((bank) => {
-                  const isSelected = selectedBankTemplate.id === bank.id;
-                  return (
-                    <TouchableOpacity
-                      key={bank.id}
-                      style={[
-                        styles.usBankPill,
-                        { borderColor: isSelected ? bank.color : '#334155' },
-                        isSelected && { backgroundColor: bank.color + '28' },
-                      ]}
-                      onPress={() => handleSelectUSBankTemplate(bank)}
-                    >
-                      <View
-                        style={[
-                          styles.usBankDot,
-                          { backgroundColor: bank.color },
-                        ]}
-                      />
-                      <Text style={styles.usBankPillText}>{bank.shortName}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+            onPress={() => setShowTransferModal(false)}
+          >
+            <Text style={styles.closeModalBtnText}>Cancelar</Text>
+          </TouchableOpacity>
 
-              <Text style={styles.inputLabel}>2. Tipo de Cuenta en {selectedBankTemplate.shortName}</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
-                <TouchableOpacity
-                  style={[
-                    styles.typeSelectBtn,
-                    usBankAccountType === 'checking' && styles.typeSelectBtnActive,
-                  ]}
-                  onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'checking')}
-                >
-                  <Text style={styles.typeSelectText}>Checking</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.typeSelectBtn,
-                    usBankAccountType === 'savings' && styles.typeSelectBtnActive,
-                  ]}
-                  onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'savings')}
-                >
-                  <Text style={styles.typeSelectText}>Savings (Ahorro)</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.typeSelectBtn,
-                    usBankAccountType === 'credit' && styles.typeSelectBtnActive,
-                  ]}
-                  onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'credit')}
-                >
-                  <Text style={styles.typeSelectText}>Tarjeta Crédito</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.inputLabel}>Nombre de la Cuenta</Text>
-              <TextInput
-                style={styles.input}
-                value={usBankCustomName}
-                onChangeText={setUsBankCustomName}
-                placeholder="Ej. Wells Fargo Checking"
-                placeholderTextColor="#64748B"
-              />
-
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 2 }}>
-                  <Text style={styles.inputLabel}>
-                    {usBankAccountType === 'credit'
-                      ? 'Deuda Usada Actual ($ USD)'
-                      : 'Tu Saldo Actual ($ USD)'}
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="0.00"
-                    placeholderTextColor="#64748B"
-                    keyboardType="decimal-pad"
-                    value={usBankBalance}
-                    onChangeText={setUsBankBalance}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Últimos 4 dígitos</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={selectedBankTemplate.defaultMask}
-                    placeholderTextColor="#64748B"
-                    keyboardType="number-pad"
-                    maxLength={4}
-                    value={usBankMask}
-                    onChangeText={setUsBankMask}
-                  />
-                </View>
-              </View>
-
-              {usBankAccountType === 'credit' ? (
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>Límite ($)</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="3000"
-                      placeholderTextColor="#64748B"
-                      keyboardType="decimal-pad"
-                      value={usBankCreditLimit}
-                      onChangeText={setUsBankCreditLimit}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>Día Corte</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="18"
-                      placeholderTextColor="#64748B"
-                      keyboardType="number-pad"
-                      value={usBankClosingDay}
-                      onChangeText={setUsBankClosingDay}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>Día Pago</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="15"
-                      placeholderTextColor="#64748B"
-                      keyboardType="number-pad"
-                      value={usBankDueDay}
-                      onChangeText={setUsBankDueDay}
-                    />
-                  </View>
-                </View>
-              ) : (
-                <View style={[styles.switchRow, { marginTop: 12, marginBottom: 12 }]}>
-                  <Switch
-                    value={usBankIncludeTotal}
-                    onValueChange={setUsBankIncludeTotal}
-                    trackColor={{ false: '#334155', true: '#0284C7' }}
-                  />
-                  <Text style={styles.switchLabel}>Sumar esta cuenta a mi Saldo Total</Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[
-                  styles.realPlaidBtn,
-                  { marginTop: 10, backgroundColor: selectedBankTemplate.color },
-                ]}
-                onPress={handleConnectDirectUSBank}
-              >
-                <Ionicons name="shield-checkmark-outline" size={18} color="#FFF" />
-                <Text style={[styles.realPlaidBtnText, { color: '#FFF' }]}>
-                  Agregar Cuenta de {selectedBankTemplate.shortName}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.closeModalBtn}
-                onPress={() => setShowUSBankModal(false)}
-              >
-                <Text style={styles.closeModalBtnText}>Cerrar</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
+          <TouchableOpacity
+            style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+            onPress={handleExecuteTransfer}
+          >
+            <Text style={styles.realPlaidBtnText}>Transferir Ahora</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </KeyboardSafeModal>
 
-      {/* Modal para Agregar Cuenta Manual o Efectivo */}
-      <Modal visible={showManualModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nueva Cuenta Personal / Efectivo</Text>
+      {/* Modal Directo de Bancos de EE. UU. (Wells Fargo, Chase, Truist, PayPal, Uber, etc.) */}
+      <KeyboardSafeModal
+        visible={showUSBankModal}
+        animationType="slide"
+        onClose={() => setShowUSBankModal(false)}
+      >
+        <Text style={styles.modalTitle}>Agregar Mi Banco o App en EE. UU.</Text>
+        <Text style={styles.modalSub}>
+          Selecciona tu banco o billetera (Wells Fargo, Chase, Truist, PayPal, Uber, BofA, Capital One, Citi o Amex) e ingresa tu saldo actual.
+        </Text>
 
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+        <Text style={styles.inputLabel}>1. Selecciona tu Banco o Billetera</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginVertical: 6 }}
+        >
+          {US_MAJOR_BANKS.map((bank) => {
+            const isSelected = selectedBankTemplate.id === bank.id;
+            return (
               <TouchableOpacity
+                key={bank.id}
                 style={[
-                  styles.typeSelectBtn,
-                  accountType === 'checking' && styles.typeSelectBtnActive,
+                  styles.usBankPill,
+                  { borderColor: isSelected ? bank.color : '#334155' },
+                  isSelected && { backgroundColor: bank.color + '28' },
                 ]}
-                onPress={() => setAccountType('checking')}
+                onPress={() => handleSelectUSBankTemplate(bank)}
               >
-                <Text style={styles.typeSelectText}>Checking / Efectivo</Text>
+                <View
+                  style={[
+                    styles.usBankDot,
+                    { backgroundColor: bank.color },
+                  ]}
+                />
+                <Text style={styles.usBankPillText}>{bank.shortName}</Text>
               </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
-              <TouchableOpacity
-                style={[
-                  styles.typeSelectBtn,
-                  accountType === 'savings' && styles.typeSelectBtnActive,
-                ]}
-                onPress={() => setAccountType('savings')}
-              >
-                <Text style={styles.typeSelectText}>Ahorros (Savings)</Text>
-              </TouchableOpacity>
+        <Text style={styles.inputLabel}>2. Tipo de Cuenta en {selectedBankTemplate.shortName}</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
+          <TouchableOpacity
+            style={[
+              styles.typeSelectBtn,
+              usBankAccountType === 'checking' && styles.typeSelectBtnActive,
+            ]}
+            onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'checking')}
+          >
+            <Text style={styles.typeSelectText}>Checking / Balance</Text>
+          </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.typeSelectBtn,
-                  accountType === 'credit' && styles.typeSelectBtnActive,
-                ]}
-                onPress={() => setAccountType('credit')}
-              >
-                <Text style={styles.typeSelectText}>Tarjeta Crédito</Text>
-              </TouchableOpacity>
-            </View>
+          <TouchableOpacity
+            style={[
+              styles.typeSelectBtn,
+              usBankAccountType === 'savings' && styles.typeSelectBtnActive,
+            ]}
+            onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'savings')}
+          >
+            <Text style={styles.typeSelectText}>Savings (Ahorro)</Text>
+          </TouchableOpacity>
 
-            <Text style={styles.inputLabel}>Nombre de la cuenta o tarjeta</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. Efectivo Casa, Billetera, Cuenta Local..."
-              placeholderTextColor="#64748B"
-              value={name}
-              onChangeText={setName}
-            />
+          <TouchableOpacity
+            style={[
+              styles.typeSelectBtn,
+              usBankAccountType === 'credit' && styles.typeSelectBtnActive,
+            ]}
+            onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'credit')}
+          >
+            <Text style={styles.typeSelectText}>Tarjeta Crédito</Text>
+          </TouchableOpacity>
+        </View>
 
-            <Text style={styles.inputLabel}>Banco o Institución</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. Wells Fargo, Chase, Truist, Efectivo..."
-              placeholderTextColor="#64748B"
-              value={institution}
-              onChangeText={setInstitution}
-            />
+        <Text style={styles.inputLabel}>Nombre de la Cuenta</Text>
+        <TextInput
+          style={styles.input}
+          value={usBankCustomName}
+          onChangeText={setUsBankCustomName}
+          placeholder="Ej. Wells Fargo Checking, PayPal, Uber Pro..."
+          placeholderTextColor="#64748B"
+        />
 
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 2 }}>
             <Text style={styles.inputLabel}>
-              {accountType === 'credit' ? 'Deuda / Saldo usado actual ($ USD)' : 'Saldo Inicial ($ USD)'}
+              {usBankAccountType === 'credit'
+                ? 'Deuda Usada Actual ($ USD)'
+                : 'Tu Saldo Actual ($ USD)'}
             </Text>
             <TextInput
               style={styles.input}
               placeholder="0.00"
               placeholderTextColor="#64748B"
               keyboardType="decimal-pad"
-              value={balance}
-              onChangeText={setBalance}
+              value={usBankBalance}
+              onChangeText={setUsBankBalance}
             />
-
-            {accountType === 'credit' ? (
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Límite Crédito ($)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="3000"
-                    placeholderTextColor="#64748B"
-                    keyboardType="decimal-pad"
-                    value={creditLimit}
-                    onChangeText={setCreditLimit}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Día Corte</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="18"
-                    placeholderTextColor="#64748B"
-                    keyboardType="number-pad"
-                    value={closingDay}
-                    onChangeText={setClosingDay}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Día Pago</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="15"
-                    placeholderTextColor="#64748B"
-                    keyboardType="number-pad"
-                    value={dueDay}
-                    onChangeText={setDueDay}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={[styles.switchRow, { marginTop: 14 }]}>
-                <Switch
-                  value={includeInTotal}
-                  onValueChange={setIncludeInTotal}
-                  trackColor={{ false: '#334155', true: '#0284C7' }}
-                />
-                <Text style={styles.switchLabel}>Sumar esta cuenta al Saldo Total</Text>
-              </View>
-            )}
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-              <TouchableOpacity
-                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
-                onPress={() => setShowManualModal(false)}
-              >
-                <Text style={styles.closeModalBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
-                onPress={handleCreateManualAccount}
-              >
-                <Text style={styles.realPlaidBtnText}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Últimos 4 dígitos</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={selectedBankTemplate.defaultMask}
+              placeholderTextColor="#64748B"
+              keyboardType="number-pad"
+              maxLength={4}
+              value={usBankMask}
+              onChangeText={setUsBankMask}
+            />
           </View>
         </View>
-      </Modal>
+
+        {usBankAccountType === 'credit' ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Límite ($)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="3000"
+                placeholderTextColor="#64748B"
+                keyboardType="decimal-pad"
+                value={usBankCreditLimit}
+                onChangeText={setUsBankCreditLimit}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Día Corte</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="18"
+                placeholderTextColor="#64748B"
+                keyboardType="number-pad"
+                value={usBankClosingDay}
+                onChangeText={setUsBankClosingDay}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Día Pago</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="15"
+                placeholderTextColor="#64748B"
+                keyboardType="number-pad"
+                value={usBankDueDay}
+                onChangeText={setUsBankDueDay}
+              />
+            </View>
+          </View>
+        ) : (
+          <>
+            <View style={[styles.switchRow, { marginTop: 12, marginBottom: 4 }]}>
+              <Switch
+                value={usBankIncludeTotal}
+                onValueChange={setUsBankIncludeTotal}
+                trackColor={{ false: '#334155', true: '#0284C7' }}
+              />
+              <Text style={styles.switchLabel}>
+                {usBankIncludeTotal
+                  ? 'Sumar esta cuenta a mi Saldo Total'
+                  : 'Cuenta Separada (No sumar a mi total)'}
+              </Text>
+            </View>
+
+            <Text style={styles.inputLabel}>
+              👤 ¿De quién es este dinero? (Opcional: si guardas dinero de alguien más)
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. Mamá, Hermano, Pareja, Guardado..."
+              placeholderTextColor="#64748B"
+              value={usBankOwnerName}
+              onChangeText={(txt) => {
+                setUsBankOwnerName(txt);
+                if (txt.trim() && txt !== 'Mío (Ahorro)') {
+                  setUsBankIncludeTotal(false);
+                }
+              }}
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
+              {OWNER_QUICK_CHIPS.map((label) => (
+                <TouchableOpacity
+                  key={label}
+                  style={[
+                    styles.chip,
+                    usBankOwnerName === label && {
+                      borderColor: '#C084FC',
+                      backgroundColor: '#3B0764',
+                    },
+                  ]}
+                  onPress={() => {
+                    setUsBankOwnerName(label);
+                    if (label !== 'Mío (Ahorro)') {
+                      setUsBankIncludeTotal(false);
+                    }
+                  }}
+                >
+                  <Text style={styles.chipText}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.realPlaidBtn,
+            { marginTop: 10, backgroundColor: selectedBankTemplate.color },
+          ]}
+          onPress={handleConnectDirectUSBank}
+        >
+          <Ionicons name="shield-checkmark-outline" size={18} color="#FFF" />
+          <Text style={[styles.realPlaidBtnText, { color: '#FFF' }]}>
+            Agregar Cuenta de {selectedBankTemplate.shortName}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.closeModalBtn}
+          onPress={() => setShowUSBankModal(false)}
+        >
+          <Text style={styles.closeModalBtnText}>Cerrar</Text>
+        </TouchableOpacity>
+      </KeyboardSafeModal>
+
+      {/* Modal para Agregar Cuenta Manual, Efectivo o Dinero Guardado de Otra Persona */}
+      <KeyboardSafeModal
+        visible={showManualModal}
+        animationType="slide"
+        onClose={() => setShowManualModal(false)}
+      >
+        <Text style={styles.modalTitle}>Nueva Cuenta Personal / Dinero Separado</Text>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+          <TouchableOpacity
+            style={[
+              styles.typeSelectBtn,
+              accountType === 'checking' && styles.typeSelectBtnActive,
+            ]}
+            onPress={() => setAccountType('checking')}
+          >
+            <Text style={styles.typeSelectText}>Checking / Efectivo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.typeSelectBtn,
+              accountType === 'savings' && styles.typeSelectBtnActive,
+            ]}
+            onPress={() => setAccountType('savings')}
+          >
+            <Text style={styles.typeSelectText}>Ahorro / Guardado</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.typeSelectBtn,
+              accountType === 'credit' && styles.typeSelectBtnActive,
+            ]}
+            onPress={() => setAccountType('credit')}
+          >
+            <Text style={styles.typeSelectText}>Tarjeta Crédito</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.inputLabel}>Nombre de la cuenta o apartado</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Dinero guardado Mamá, Efectivo Casa, PayPal..."
+          placeholderTextColor="#64748B"
+          value={name}
+          onChangeText={setName}
+        />
+
+        <Text style={styles.inputLabel}>Banco, App o Lugar</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Wells Fargo, Chase, Truist, PayPal, Uber, Efectivo..."
+          placeholderTextColor="#64748B"
+          value={institution}
+          onChangeText={setInstitution}
+        />
+
+        <Text style={styles.inputLabel}>
+          {accountType === 'credit' ? 'Deuda / Saldo usado actual ($ USD)' : 'Monto / Saldo Inicial ($ USD)'}
+        </Text>
+        <TextInput
+          style={styles.input}
+          placeholder="0.00"
+          placeholderTextColor="#64748B"
+          keyboardType="decimal-pad"
+          value={balance}
+          onChangeText={setBalance}
+        />
+
+        {accountType === 'credit' ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Límite Crédito ($)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="3000"
+                placeholderTextColor="#64748B"
+                keyboardType="decimal-pad"
+                value={creditLimit}
+                onChangeText={setCreditLimit}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Día Corte</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="18"
+                placeholderTextColor="#64748B"
+                keyboardType="number-pad"
+                value={closingDay}
+                onChangeText={setClosingDay}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Día Pago</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="15"
+                placeholderTextColor="#64748B"
+                keyboardType="number-pad"
+                value={dueDay}
+                onChangeText={setDueDay}
+              />
+            </View>
+          </View>
+        ) : (
+          <>
+            <View style={[styles.switchRow, { marginTop: 12 }]}>
+              <Switch
+                value={includeInTotal}
+                onValueChange={setIncludeInTotal}
+                trackColor={{ false: '#334155', true: '#0284C7' }}
+              />
+              <Text style={styles.switchLabel}>
+                {includeInTotal
+                  ? 'Sumar esta cuenta a mi Saldo Total'
+                  : 'Separada (No sumar a mi dinero total)'}
+              </Text>
+            </View>
+
+            <Text style={styles.inputLabel}>
+              👤 ¿De quién es este dinero? (Ideal si guardas dinero que no es tuyo)
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. Mamá, Hermano, Familiar, Amigo..."
+              placeholderTextColor="#64748B"
+              value={manualOwnerName}
+              onChangeText={(txt) => {
+                setManualOwnerName(txt);
+                if (txt.trim() && txt !== 'Mío (Ahorro)') {
+                  setIncludeInTotal(false);
+                }
+              }}
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+              {OWNER_QUICK_CHIPS.map((label) => (
+                <TouchableOpacity
+                  key={label}
+                  style={[
+                    styles.chip,
+                    manualOwnerName === label && {
+                      borderColor: '#C084FC',
+                      backgroundColor: '#3B0764',
+                    },
+                  ]}
+                  onPress={() => {
+                    setManualOwnerName(label);
+                    if (label !== 'Mío (Ahorro)') {
+                      setIncludeInTotal(false);
+                    }
+                  }}
+                >
+                  <Text style={styles.chipText}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+          <TouchableOpacity
+            style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+            onPress={() => setShowManualModal(false)}
+          >
+            <Text style={styles.closeModalBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+            onPress={handleCreateManualAccount}
+          >
+            <Text style={styles.realPlaidBtnText}>Guardar</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
     </View>
   );
 }
@@ -1121,13 +1326,71 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#1E293B',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   summaryCol: { flex: 1 },
   summaryDivider: { width: 1, backgroundColor: '#1E293B', marginHorizontal: 14 },
   summaryLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700' },
   summaryIncludedValue: { color: '#38BDF8', fontSize: 20, fontWeight: '800', marginTop: 4 },
   summaryExcludedValue: { color: '#A855F7', fontSize: 20, fontWeight: '800', marginTop: 4 },
+  ownersBreakdownCard: {
+    backgroundColor: '#1E1B4B',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#4C1D95',
+    marginBottom: 14,
+  },
+  ownersBreakdownTitle: {
+    color: '#E9D5FF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  ownerItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(139, 92, 246, 0.2)',
+  },
+  ownerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  ownerItemPerson: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  ownerItemSub: {
+    color: '#C4B5FD',
+    fontSize: 11,
+  },
+  ownerItemAmount: {
+    color: '#E9D5FF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  ownerBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: '#3B0764',
+    borderWidth: 1,
+    borderColor: '#7E22CE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginTop: 5,
+  },
+  ownerBadgeText: {
+    color: '#E9D5FF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   topButtonsRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   plaidConnectBtn: {
     flex: 1,
@@ -1177,8 +1440,8 @@ const styles = StyleSheet.create({
     borderColor: '#1E293B',
   },
   accountCardExcluded: {
-    opacity: 0.9,
-    borderColor: '#334155',
+    opacity: 0.95,
+    borderColor: '#4C1D95',
     borderStyle: 'dashed',
   },
   accountTopRow: { flexDirection: 'row', alignItems: 'center' },
@@ -1239,8 +1502,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
   },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  switchLabel: { color: '#CBD5E1', fontSize: 13, fontWeight: '600' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  switchLabel: { color: '#CBD5E1', fontSize: 12, fontWeight: '600', flexShrink: 1 },
   typeSelectBtn: {
     flex: 1,
     paddingVertical: 9,
@@ -1275,19 +1538,6 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 13,
     fontWeight: '800',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.85)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#0F172A',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    borderTopWidth: 1,
-    borderColor: '#1E293B',
   },
   modalTitle: { color: '#F8FAFC', fontSize: 19, fontWeight: '800', marginBottom: 6 },
   modalSub: { color: '#94A3B8', fontSize: 12, lineHeight: 18, marginBottom: 12 },

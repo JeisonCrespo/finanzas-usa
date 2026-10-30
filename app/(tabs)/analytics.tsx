@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
   TextInput,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
 import { DonutChart } from '../../src/components/DonutChart';
 import { GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
+import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
 
 export default function AnalyticsAndBudgetsScreen() {
   const {
@@ -29,6 +30,17 @@ export default function AnalyticsAndBudgetsScreen() {
   const [viewMode, setViewMode] = useState<'budgets' | 'chart'>('budgets');
   const [selectedType, setSelectedType] = useState<'expense' | 'income'>('expense');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (viewMode === 'chart') {
+        setViewMode('budgets');
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [viewMode]);
 
   // Modal para Crear un Presupuesto Mensual Independiente
   const [showAddBudgetModal, setShowAddBudgetModal] = useState(false);
@@ -365,140 +377,140 @@ export default function AnalyticsAndBudgetsScreen() {
       </ScrollView>
 
       {/* Modal para Agregar Presupuesto Mensual Independiente */}
-      <Modal visible={showAddBudgetModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nuevo Presupuesto para el Mes</Text>
+      <KeyboardSafeModal
+        visible={showAddBudgetModal}
+        animationType="slide"
+        onClose={() => setShowAddBudgetModal(false)}
+      >
+        <Text style={styles.modalTitle}>Nuevo Presupuesto para el Mes</Text>
 
-            <Text style={styles.inputLabel}>
-              Nombre del Presupuesto (Ej. Comida, Salidas, Juegos...)
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. Comida del mes"
-              placeholderTextColor="#64748B"
-              value={budgetTitle}
-              onChangeText={setBudgetTitle}
-            />
+        <Text style={styles.inputLabel}>
+          Nombre del Presupuesto (Ej. Comida, Salidas, Juegos...)
+        </Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Comida del mes"
+          placeholderTextColor="#64748B"
+          value={budgetTitle}
+          onChangeText={setBudgetTitle}
+        />
 
-            <Text style={styles.inputLabel}>Tope / Meta Mensual ($ USD)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. 200.00"
-              placeholderTextColor="#64748B"
-              keyboardType="decimal-pad"
-              value={budgetLimit}
-              onChangeText={setBudgetLimit}
-            />
+        <Text style={styles.inputLabel}>Tope / Meta Mensual ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. 200.00"
+          placeholderTextColor="#64748B"
+          keyboardType="decimal-pad"
+          value={budgetLimit}
+          onChangeText={setBudgetLimit}
+        />
 
-            <Text style={styles.inputLabel}>
-              Opcional: ¿Vincular automáticamente con una categoría de gastos?
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+        <Text style={styles.inputLabel}>
+          Opcional: ¿Vincular automáticamente con una categoría de gastos?
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          <TouchableOpacity
+            style={[
+              styles.filterChip,
+              linkedCategoryId === '' && styles.filterChipActive,
+            ]}
+            onPress={() => setLinkedCategoryId('')}
+          >
+            <Text style={styles.filterChipText}>No vincular (Solo manual)</Text>
+          </TouchableOpacity>
+
+          {categories
+            .filter((c) => c.type === 'expense')
+            .map((cat) => (
               <TouchableOpacity
+                key={cat.id}
                 style={[
                   styles.filterChip,
-                  linkedCategoryId === '' && styles.filterChipActive,
+                  linkedCategoryId === cat.id && styles.filterChipActive,
                 ]}
-                onPress={() => setLinkedCategoryId('')}
-              >
-                <Text style={styles.filterChipText}>No vincular (Solo manual)</Text>
-              </TouchableOpacity>
-
-              {categories
-                .filter((c) => c.type === 'expense')
-                .map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.filterChip,
-                      linkedCategoryId === cat.id && styles.filterChipActive,
-                    ]}
-                    onPress={() => {
-                      setLinkedCategoryId(cat.id);
-                      setBudgetIcon(cat.icon);
-                      setBudgetColor(cat.color);
-                      if (!budgetTitle.trim()) setBudgetTitle(cat.name);
-                    }}
-                  >
-                    <Text style={styles.filterChipText}>{cat.name}</Text>
-                  </TouchableOpacity>
-                ))}
-            </ScrollView>
-
-            <Text style={styles.inputLabel}>Ícono</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-              {GENERAL_ICONS.slice(0, 24).map((item) => (
-                <TouchableOpacity
-                  key={item.icon}
-                  style={[
-                    styles.filterChip,
-                    budgetIcon === item.icon && styles.filterChipActive,
-                  ]}
-                  onPress={() => setBudgetIcon(item.icon)}
-                >
-                  <Text style={styles.filterChipText}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setShowAddBudgetModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveNewBudget}>
-                <Text style={styles.saveBtnText}>Guardar Presupuesto</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal para Anotar Gasto Manual a un Presupuesto */}
-      <Modal visible={Boolean(addingSpendBudgetId)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Sumar al Presupuesto</Text>
-            <Text style={styles.inputLabel}>Monto a sumar a lo gastado este mes ($ USD)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. 25.00"
-              placeholderTextColor="#64748B"
-              keyboardType="decimal-pad"
-              value={manualSpendInput}
-              onChangeText={setManualSpendInput}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setAddingSpendBudgetId(null)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={async () => {
-                  if (addingSpendBudgetId) {
-                    const amt = parseFloat(manualSpendInput);
-                    if (!isNaN(amt) && amt !== 0) {
-                      await addManualSpendToBudget(addingSpendBudgetId, amt);
-                    }
-                    setAddingSpendBudgetId(null);
-                  }
+                onPress={() => {
+                  setLinkedCategoryId(cat.id);
+                  setBudgetIcon(cat.icon);
+                  setBudgetColor(cat.color);
+                  if (!budgetTitle.trim()) setBudgetTitle(cat.name);
                 }}
               >
-                <Text style={styles.saveBtnText}>Sumar</Text>
+                <Text style={styles.filterChipText}>{cat.name}</Text>
               </TouchableOpacity>
-            </View>
-          </View>
+            ))}
+        </ScrollView>
+
+        <Text style={styles.inputLabel}>Ícono</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {GENERAL_ICONS.slice(0, 24).map((item) => (
+            <TouchableOpacity
+              key={item.icon}
+              style={[
+                styles.filterChip,
+                budgetIcon === item.icon && styles.filterChipActive,
+              ]}
+              onPress={() => setBudgetIcon(item.icon)}
+            >
+              <Text style={styles.filterChipText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowAddBudgetModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveNewBudget}>
+            <Text style={styles.saveBtnText}>Guardar Presupuesto</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </KeyboardSafeModal>
+
+      {/* Modal para Anotar Gasto Manual a un Presupuesto */}
+      <KeyboardSafeModal
+        visible={Boolean(addingSpendBudgetId)}
+        animationType="fade"
+        onClose={() => setAddingSpendBudgetId(null)}
+      >
+        <Text style={styles.modalTitle}>Sumar al Presupuesto</Text>
+        <Text style={styles.inputLabel}>Monto a sumar a lo gastado este mes ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. 25.00"
+          placeholderTextColor="#64748B"
+          keyboardType="decimal-pad"
+          value={manualSpendInput}
+          onChangeText={setManualSpendInput}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setAddingSpendBudgetId(null)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={async () => {
+              if (addingSpendBudgetId) {
+                const amt = parseFloat(manualSpendInput);
+                if (!isNaN(amt) && amt !== 0) {
+                  await addManualSpendToBudget(addingSpendBudgetId, amt);
+                }
+                setAddingSpendBudgetId(null);
+              }
+            }}
+          >
+            <Text style={styles.saveBtnText}>Sumar</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
     </View>
   );
 }

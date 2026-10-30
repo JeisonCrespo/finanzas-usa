@@ -61,7 +61,8 @@ interface FinanceContextType {
     accountId: string,
     newName: string,
     newBalance: number,
-    newMask?: string
+    newMask?: string,
+    newOwnerName?: string
   ) => Promise<void>;
   updateCreditCardDetails: (
     accountId: string,
@@ -149,6 +150,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           plaidItemId: r.plaid_item_id ?? undefined,
           color: r.color,
           lastSyncedAt: r.last_synced_at ?? undefined,
+          ownerName: r.owner_name ?? undefined,
           creditLimit: Number(r.credit_limit || 0),
           closingDay: Number(r.closing_day || 0),
           dueDay: Number(r.due_day || 0),
@@ -304,8 +306,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await db.runAsync(
       `INSERT INTO accounts (
         id, name, institution, mask, type, balance, currency, include_in_total, is_plaid_connected, color,
-        credit_limit, closing_day, due_day
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+        owner_name, credit_limit, closing_day, due_day
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
       [
         id,
         account.name,
@@ -316,6 +318,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         account.currency || 'USD',
         account.includeInTotal ? 1 : 0,
         account.color,
+        account.ownerName?.trim() || null,
         account.creditLimit ?? 0,
         account.closingDay ?? 0,
         account.dueDay ?? 0,
@@ -331,8 +334,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await db.runAsync(
       `INSERT INTO accounts (
         id, name, institution, mask, type, balance, currency, include_in_total, is_plaid_connected, plaid_account_id, color, last_synced_at,
-        credit_limit, closing_day, due_day
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+        owner_name, credit_limit, closing_day, due_day
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         account.name,
@@ -345,6 +348,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         `us_bank_${id}`,
         account.color,
         nowIso,
+        account.ownerName?.trim() || null,
         account.creditLimit ?? 0,
         account.closingDay ?? 0,
         account.dueDay ?? 0,
@@ -357,12 +361,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     accountId: string,
     newName: string,
     newBalance: number,
-    newMask?: string
+    newMask?: string,
+    newOwnerName?: string
   ) => {
     const db = await getDb();
     await db.runAsync(
-      `UPDATE accounts SET name = ?, balance = ?, mask = ? WHERE id = ?`,
-      [newName.trim(), newBalance, newMask?.trim() || null, accountId]
+      `UPDATE accounts SET name = ?, balance = ?, mask = ?, owner_name = ? WHERE id = ?`,
+      [
+        newName.trim(),
+        newBalance,
+        newMask?.trim() || null,
+        newOwnerName?.trim() || null,
+        accountId,
+      ]
     );
     await refreshAll();
   };
@@ -846,8 +857,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         `INSERT INTO accounts (
           id, name, institution, mask, type, balance, currency,
           include_in_total, is_plaid_connected, plaid_account_id, plaid_item_id, color, last_synced_at,
-          credit_limit, closing_day, due_day
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          owner_name, credit_limit, closing_day, due_day
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           a.id,
           a.name,
@@ -862,6 +873,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           a.plaidItemId ?? null,
           a.color,
           a.lastSyncedAt ?? null,
+          a.ownerName ?? null,
           a.creditLimit ?? 0,
           a.closingDay ?? 0,
           a.dueDay ?? 0,

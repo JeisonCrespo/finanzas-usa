@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 export default function TabsLayout() {
   return (
     <Tabs
+      backBehavior="history"
       screenOptions={{
         headerShown: true,
         headerStyle: { backgroundColor: '#0F172A' },

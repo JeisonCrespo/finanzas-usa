@@ -265,6 +265,10 @@ export function parseBankAlertsOrCsv(rawText: string): ParsedBankMovement[] {
           bankHint = 'chase';
         } else if (/truist/i.test(line)) {
           bankHint = 'truist';
+        } else if (/paypal/i.test(line)) {
+          bankHint = 'paypal';
+        } else if (/uber/i.test(line)) {
+          bankHint = 'uber';
         }
 
         results.push({

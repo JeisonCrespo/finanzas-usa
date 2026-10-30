@@ -18,6 +18,8 @@ export interface BankAccount {
   plaidItemId?: string;
   color: string;
   lastSyncedAt?: string;
+  // Nombre del dueño o etiqueta de quién es este dinero (especialmente útil en cuentas separadas)
+  ownerName?: string;
   // Campos exclusivos para control de Tarjetas de Crédito en EE. UU.
   creditLimit?: number; // Límite total de la tarjeta ($ USD)
   closingDay?: number; // Día de corte (Statement Closing Date, 1-31)
