@@ -16,7 +16,7 @@ import {
   US_SANDBOX_BANKS,
   createPlaidLinkToken,
 } from '../../src/services/plaidService';
-import { AccountType } from '../../src/types/finance';
+import { AccountType, BankAccount } from '../../src/types/finance';
 
 export default function AccountsScreen() {
   const {
@@ -26,6 +26,7 @@ export default function AccountsScreen() {
     toggleAccountIncludeInTotal,
     connectSandboxUSBank,
     addManualAccount,
+    updateCreditCardDetails,
     transferBetweenAccounts,
     deleteAccount,
   } = useFinance();
@@ -34,12 +35,21 @@ export default function AccountsScreen() {
   const [showManualModal, setShowManualModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
 
-  // Estado para nueva cuenta manual
+  // Estado para nueva cuenta manual o tarjeta de crédito
   const [name, setName] = useState('');
   const [institution, setInstitution] = useState('');
   const [balance, setBalance] = useState('');
-  const [accountType] = useState<AccountType>('checking');
+  const [accountType, setAccountType] = useState<AccountType>('checking');
   const [includeInTotal, setIncludeInTotal] = useState(true);
+  const [creditLimit, setCreditLimit] = useState('');
+  const [closingDay, setClosingDay] = useState('');
+  const [dueDay, setDueDay] = useState('');
+
+  // Modal para editar fechas de corte/pago y límite de una tarjeta existente (#3)
+  const [editingCard, setEditingCard] = useState<BankAccount | null>(null);
+  const [editLimit, setEditLimit] = useState('');
+  const [editClosing, setEditClosing] = useState('');
+  const [editDue, setEditDue] = useState('');
 
   // Estado para transferir entre cuentas
   const [fromAccId, setFromAccId] = useState('');
@@ -53,12 +63,12 @@ export default function AccountsScreen() {
       const linkToken = await createPlaidLinkToken();
       Alert.alert(
         'Plaid Link Token Generado',
-        `Token listo (${linkToken.slice(0, 18)}...). En un APK Android compilado con react-native-plaid-link-sdk se abre la ventana nativa del banco.`
+        `Token listo (${linkToken.slice(0, 18)}...). En un APK Android compilado con tus llaves de Plaid se abre la ventana del banco.`
       );
     } catch {
       Alert.alert(
         'Modo Sandbox Local',
-        'El servidor backend aún no tiene llaves de producción configuradas. Puedes vincular al instante cualquiera de los bancos de EE. UU. del simulador abajo.'
+        'Aún no has agregado tu PLAID_SECRET en Vercel. Puedes vincular al instante cualquiera de los bancos de EE. UU. del simulador abajo.'
       );
     }
   };
@@ -73,19 +83,39 @@ export default function AccountsScreen() {
       type: accountType,
       balance: parsedBalance,
       currency: 'USD',
-      includeInTotal,
-      color: '#0284C7',
+      includeInTotal: accountType === 'credit' ? false : includeInTotal,
+      color: accountType === 'credit' ? '#E11D48' : '#0284C7',
+      creditLimit: accountType === 'credit' ? parseFloat(creditLimit) || 0 : 0,
+      closingDay: accountType === 'credit' ? parseInt(closingDay, 10) || 0 : 0,
+      dueDay: accountType === 'credit' ? parseInt(dueDay, 10) || 0 : 0,
     });
 
     setName('');
     setInstitution('');
     setBalance('');
+    setCreditLimit('');
+    setClosingDay('');
+    setDueDay('');
     setShowManualModal(false);
+  };
+
+  const handleSaveCreditCardSettings = async () => {
+    if (!editingCard) return;
+    await updateCreditCardDetails(
+      editingCard.id,
+      parseFloat(editLimit) || 0,
+      parseInt(editClosing, 10) || 0,
+      parseInt(editDue, 10) || 0
+    );
+    setEditingCard(null);
   };
 
   const openTransferModal = () => {
     if (accounts.length < 2) {
-      Alert.alert('Necesitas al menos 2 cuentas', 'Crea o vincula al menos dos cuentas para transferir dinero entre ellas.');
+      Alert.alert(
+        'Necesitas al menos 2 cuentas',
+        'Crea o vincula al menos dos cuentas para transferir dinero entre ellas.'
+      );
       return;
     }
     setFromAccId(accounts[0].id);
@@ -129,7 +159,7 @@ export default function AccountsScreen() {
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel}>SEPARADAS (NO SUMAN)</Text>
+            <Text style={styles.summaryLabel}>SEPARADAS / TARJETAS</Text>
             <Text style={styles.summaryExcludedValue}>
               ${excludedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
@@ -163,77 +193,231 @@ export default function AccountsScreen() {
         </View>
 
         <Text style={styles.helperNote}>
-          Usa el interruptor en cada cuenta para elegir cuáles se suman a tu Saldo Total principal y cuáles mantener separadas.
+          Elige qué cuentas se suman a tu Saldo Total. En tus Tarjetas de Crédito puedes controlar tu Fecha de Corte, Fecha de Pago y % de Utilización (ideal bajo 30% en EE. UU.).
         </Text>
 
-        {/* Lista de Cuentas */}
-        {accounts.map((acc) => (
-          <View
-            key={acc.id}
-            style={[
-              styles.accountCard,
-              !acc.includeInTotal && styles.accountCardExcluded,
-            ]}
-          >
-            <View style={styles.accountTopRow}>
-              <View style={[styles.bankBadge, { backgroundColor: acc.color }]}>
-                <Ionicons
-                  name={acc.isPlaidConnected ? 'shield-checkmark-outline' : 'wallet-outline'}
-                  size={20}
-                  color="#FFF"
+        {/* Lista de Cuentas y Tarjetas de Crédito (#3) */}
+        {accounts.map((acc) => {
+          const isCredit = acc.type === 'credit';
+          const limit = acc.creditLimit || 0;
+          const used = Math.abs(acc.balance);
+          const utilizationPct = limit > 0 ? (used / limit) * 100 : 0;
+
+          return (
+            <View
+              key={acc.id}
+              style={[
+                styles.accountCard,
+                !acc.includeInTotal && styles.accountCardExcluded,
+              ]}
+            >
+              <View style={styles.accountTopRow}>
+                <View style={[styles.bankBadge, { backgroundColor: acc.color }]}>
+                  <Ionicons
+                    name={
+                      isCredit
+                        ? 'card-outline'
+                        : acc.isPlaidConnected
+                        ? 'shield-checkmark-outline'
+                        : 'wallet-outline'
+                    }
+                    size={20}
+                    color="#FFF"
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.accountName}>{acc.name}</Text>
+                    {acc.mask && <Text style={styles.accountMask}>•••• {acc.mask}</Text>}
+                  </View>
+                  <Text style={styles.accountInstitution}>
+                    {acc.institution} • {isCredit ? 'Tarjeta de Crédito US' : 'Cuenta Bancaria'}
+                  </Text>
+                </View>
+
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.accountBalance}>
+                    ${acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </Text>
+                  {isCredit && (
+                    <Text style={styles.creditSubTag}>Saldo usado</Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Panel de Control de Tarjeta de Crédito (Corte, Pago y % Utilización FICO) */}
+              {isCredit && (
+                <View style={styles.creditBox}>
+                  <View style={styles.creditHeaderRow}>
+                    <Text style={styles.creditDatesText}>
+                      Corte (Closing):{' '}
+                      <Text style={styles.creditHighlight}>
+                        {acc.closingDay ? `Día ${acc.closingDay}` : 'Sin definir'}
+                      </Text>{' '}
+                      • Pago (Due):{' '}
+                      <Text style={styles.creditHighlight}>
+                        {acc.dueDay ? `Día ${acc.dueDay}` : 'Sin definir'}
+                      </Text>
+                    </Text>
+
+                    <TouchableOpacity
+                      style={styles.editCreditBtn}
+                      onPress={() => {
+                        setEditingCard(acc);
+                        setEditLimit(limit > 0 ? String(limit) : '');
+                        setEditClosing(acc.closingDay ? String(acc.closingDay) : '');
+                        setEditDue(acc.dueDay ? String(acc.dueDay) : '');
+                      }}
+                    >
+                      <Text style={styles.editCreditBtnText}>Configurar Tarjeta</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {limit > 0 && (
+                    <>
+                      <View style={styles.creditUtilRow}>
+                        <Text style={styles.creditUtilLabel}>
+                          Disponible: ${Math.max(0, limit - used).toFixed(2)} de ${limit.toFixed(0)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.creditUtilPct,
+                            {
+                              color:
+                                utilizationPct > 30
+                                  ? '#F87171'
+                                  : utilizationPct > 10
+                                  ? '#FBBF24'
+                                  : '#4ADE80',
+                            },
+                          ]}
+                        >
+                          Utilización: {utilizationPct.toFixed(1)}%{' '}
+                          {utilizationPct <= 30 ? '(Óptimo FICO)' : '(Alto >30%)'}
+                        </Text>
+                      </View>
+                      <View style={styles.progressTrack}>
+                        <View
+                          style={[
+                            styles.progressFill,
+                            {
+                              width: `${Math.min(utilizationPct, 100)}%`,
+                              backgroundColor:
+                                utilizationPct > 30
+                                  ? '#EF4444'
+                                  : utilizationPct > 10
+                                  ? '#F59E0B'
+                                  : '#22C55E',
+                            },
+                          ]}
+                        />
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+
+              <View style={styles.accountFooter}>
+                <View style={styles.switchRow}>
+                  <Switch
+                    value={acc.includeInTotal}
+                    onValueChange={() => toggleAccountIncludeInTotal(acc.id)}
+                    trackColor={{ false: '#334155', true: '#0284C7' }}
+                    thumbColor={acc.includeInTotal ? '#38BDF8' : '#94A3B8'}
+                  />
+                  <Text
+                    style={[
+                      styles.switchLabel,
+                      { color: acc.includeInTotal ? '#38BDF8' : '#94A3B8' },
+                    ]}
+                  >
+                    {acc.includeInTotal
+                      ? 'Incluida en el Saldo Total'
+                      : 'Separada (No se suma al total)'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity onPress={() => deleteAccount(acc.id)}>
+                  <Ionicons name="trash-outline" size={18} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Modal para Configurar Corte, Pago y Límite de Tarjeta de Crédito */}
+      <Modal visible={Boolean(editingCard)} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              Configurar Tarjeta: {editingCard?.name}
+            </Text>
+            <Text style={styles.modalSub}>
+              En EE. UU. mantener el uso bajo el 30% antes del día de corte (Statement Closing Date) mejora tu puntaje de crédito (Credit Score).
+            </Text>
+
+            <Text style={styles.inputLabel}>Límite de Crédito Total ($ USD)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. 3000"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={editLimit}
+              onChangeText={setEditLimit}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Día de Corte (1-31)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ej. 18"
+                  placeholderTextColor="#64748B"
+                  keyboardType="number-pad"
+                  value={editClosing}
+                  onChangeText={setEditClosing}
                 />
               </View>
-
               <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.accountName}>{acc.name}</Text>
-                  {acc.mask && <Text style={styles.accountMask}>•••• {acc.mask}</Text>}
-                </View>
-                <Text style={styles.accountInstitution}>
-                  {acc.institution} • {acc.isPlaidConnected ? 'Conectado vía Plaid US' : 'Manual'}
-                </Text>
+                <Text style={styles.inputLabel}>Día Límite Pago (1-31)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ej. 15"
+                  placeholderTextColor="#64748B"
+                  keyboardType="number-pad"
+                  value={editDue}
+                  onChangeText={setEditDue}
+                />
               </View>
-
-              <Text style={styles.accountBalance}>
-                ${acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </Text>
             </View>
 
-            <View style={styles.accountFooter}>
-              <View style={styles.switchRow}>
-                <Switch
-                  value={acc.includeInTotal}
-                  onValueChange={() => toggleAccountIncludeInTotal(acc.id)}
-                  trackColor={{ false: '#334155', true: '#0284C7' }}
-                  thumbColor={acc.includeInTotal ? '#38BDF8' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.switchLabel,
-                    { color: acc.includeInTotal ? '#38BDF8' : '#94A3B8' },
-                  ]}
-                >
-                  {acc.includeInTotal
-                    ? 'Incluida en el Saldo Total'
-                    : 'Separada (No se suma al total)'}
-                </Text>
-              </View>
-
-              <TouchableOpacity onPress={() => deleteAccount(acc.id)}>
-                <Ionicons name="trash-outline" size={18} color="#64748B" />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+                onPress={() => setEditingCard(null)}
+              >
+                <Text style={styles.closeModalBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+                onPress={handleSaveCreditCardSettings}
+              >
+                <Text style={styles.realPlaidBtnText}>Guardar</Text>
               </TouchableOpacity>
             </View>
           </View>
-        ))}
-      </ScrollView>
+        </View>
+      </Modal>
 
       {/* Modal para Transferir Dinero entre Cuentas con Comisión Opcional */}
       <Modal visible={showTransferModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Pasar Dinero entre Cuentas</Text>
+            <Text style={styles.modalTitle}>Pasar Dinero o Pagar Tarjeta</Text>
             <Text style={styles.modalSub}>
-              Mueve saldo de una cuenta a otra. Si el banco te cobró comisión por la transferencia, agrégala opcionalmente.
+              Mueve saldo de una cuenta a otra (o paga tu tarjeta de crédito). Si te cobraron comisión, agrégala opcionalmente.
             </Text>
 
             <Text style={styles.inputLabel}>De qué cuenta sale (Origen)</Text>
@@ -254,7 +438,7 @@ export default function AccountsScreen() {
               ))}
             </ScrollView>
 
-            <Text style={styles.inputLabel}>A qué cuenta entra (Destino)</Text>
+            <Text style={styles.inputLabel}>A qué cuenta entra o qué tarjeta paga (Destino)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
               {accounts.map((acc) => (
                 <TouchableOpacity
@@ -301,7 +485,7 @@ export default function AccountsScreen() {
             <Text style={styles.inputLabel}>Concepto / Nota (Opcional)</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Ahorro mensual, Pago tarjeta, Zelle..."
+              placeholder="Ej. Pago de tarjeta BofA, Ahorro mensual..."
               placeholderTextColor="#64748B"
               value={transferNote}
               onChangeText={setTransferNote}
@@ -332,7 +516,7 @@ export default function AccountsScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Conectar Banco en Estados Unidos</Text>
             <Text style={styles.modalSub}>
-              Vincula cuentas de Chase, Bank of America, Wells Fargo, Capital One, Citi o American Express mediante Plaid para importar transacciones automáticamente.
+              Vincula cuentas de Chase, Bank of America, Wells Fargo, Capital One, Citi o American Express mediante Plaid.
             </Text>
 
             <TouchableOpacity style={styles.realPlaidBtn} onPress={handleOpenRealPlaid}>
@@ -351,14 +535,14 @@ export default function AccountsScreen() {
                     {bank.institution} — {bank.accountName}
                   </Text>
                   <Text style={styles.sandboxBankSub}>
-                    Saldo: ${bank.balance.toFixed(2)} • Incluye {bank.sampleTransactions.length} movimientos de prueba
+                    Saldo: ${Math.abs(bank.balance).toFixed(2)} • Incluye {bank.sampleTransactions.length} movimientos
                   </Text>
                 </View>
 
                 <TouchableOpacity
                   style={styles.sandboxAddBtn}
                   onPress={async () => {
-                    await connectSandboxUSBank(bank.id, true);
+                    await connectSandboxUSBank(bank.id, bank.type !== 'credit');
                     setShowPlaidModal(false);
                   }}
                 >
@@ -377,16 +561,48 @@ export default function AccountsScreen() {
         </View>
       </Modal>
 
-      {/* Modal para Agregar Cuenta Manual */}
+      {/* Modal para Agregar Cuenta Manual o Tarjeta de Crédito */}
       <Modal visible={showManualModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nueva Cuenta o Efectivo</Text>
+            <Text style={styles.modalTitle}>Nueva Cuenta o Tarjeta de Crédito</Text>
 
-            <Text style={styles.inputLabel}>Nombre de la cuenta</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+              <TouchableOpacity
+                style={[
+                  styles.typeSelectBtn,
+                  accountType === 'checking' && styles.typeSelectBtnActive,
+                ]}
+                onPress={() => setAccountType('checking')}
+              >
+                <Text style={styles.typeSelectText}>Checking / Efectivo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typeSelectBtn,
+                  accountType === 'savings' && styles.typeSelectBtnActive,
+                ]}
+                onPress={() => setAccountType('savings')}
+              >
+                <Text style={styles.typeSelectText}>Ahorros (Savings)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typeSelectBtn,
+                  accountType === 'credit' && styles.typeSelectBtnActive,
+                ]}
+                onPress={() => setAccountType('credit')}
+              >
+                <Text style={styles.typeSelectText}>Tarjeta Crédito</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>Nombre de la cuenta o tarjeta</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Ahorros Casa, Efectivo, Wells Fargo..."
+              placeholder="Ej. Chase Freedom, Wells Fargo, Efectivo..."
               placeholderTextColor="#64748B"
               value={name}
               onChangeText={setName}
@@ -395,13 +611,15 @@ export default function AccountsScreen() {
             <Text style={styles.inputLabel}>Banco o Institución</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Wells Fargo, Citibank, Efectivo..."
+              placeholder="Ej. Chase, Bank of America, Amex..."
               placeholderTextColor="#64748B"
               value={institution}
               onChangeText={setInstitution}
             />
 
-            <Text style={styles.inputLabel}>Saldo Inicial ($ USD)</Text>
+            <Text style={styles.inputLabel}>
+              {accountType === 'credit' ? 'Deuda / Saldo usado actual ($ USD)' : 'Saldo Inicial ($ USD)'}
+            </Text>
             <TextInput
               style={styles.input}
               placeholder="0.00"
@@ -411,14 +629,52 @@ export default function AccountsScreen() {
               onChangeText={setBalance}
             />
 
-            <View style={[styles.switchRow, { marginTop: 14 }]}>
-              <Switch
-                value={includeInTotal}
-                onValueChange={setIncludeInTotal}
-                trackColor={{ false: '#334155', true: '#0284C7' }}
-              />
-              <Text style={styles.switchLabel}>Sumar esta cuenta al Saldo Total</Text>
-            </View>
+            {accountType === 'credit' ? (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Límite Crédito ($)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="3000"
+                    placeholderTextColor="#64748B"
+                    keyboardType="decimal-pad"
+                    value={creditLimit}
+                    onChangeText={setCreditLimit}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Día Corte</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="18"
+                    placeholderTextColor="#64748B"
+                    keyboardType="number-pad"
+                    value={closingDay}
+                    onChangeText={setClosingDay}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Día Pago</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="15"
+                    placeholderTextColor="#64748B"
+                    keyboardType="number-pad"
+                    value={dueDay}
+                    onChangeText={setDueDay}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.switchRow, { marginTop: 14 }]}>
+                <Switch
+                  value={includeInTotal}
+                  onValueChange={setIncludeInTotal}
+                  trackColor={{ false: '#334155', true: '#0284C7' }}
+                />
+                <Text style={styles.switchLabel}>Sumar esta cuenta al Saldo Total</Text>
+              </View>
+            )}
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
               <TouchableOpacity
@@ -432,7 +688,7 @@ export default function AccountsScreen() {
                 style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
                 onPress={handleCreateManualAccount}
               >
-                <Text style={styles.realPlaidBtnText}>Guardar Cuenta</Text>
+                <Text style={styles.realPlaidBtnText}>Guardar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -508,7 +764,7 @@ const styles = StyleSheet.create({
     borderColor: '#1E293B',
   },
   accountCardExcluded: {
-    opacity: 0.82,
+    opacity: 0.9,
     borderColor: '#334155',
     borderStyle: 'dashed',
   },
@@ -525,6 +781,42 @@ const styles = StyleSheet.create({
   accountMask: { color: '#94A3B8', fontSize: 12 },
   accountInstitution: { color: '#64748B', fontSize: 12, marginTop: 2 },
   accountBalance: { color: '#F8FAFC', fontSize: 18, fontWeight: '800' },
+  creditSubTag: { color: '#FDA4AF', fontSize: 10, fontWeight: '600' },
+  creditBox: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
+  },
+  creditHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  creditDatesText: { color: '#CBD5E1', fontSize: 11 },
+  creditHighlight: { color: '#38BDF8', fontWeight: '700' },
+  editCreditBtn: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  editCreditBtnText: { color: '#38BDF8', fontSize: 11, fontWeight: '700' },
+  creditUtilRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  creditUtilLabel: { color: '#94A3B8', fontSize: 11 },
+  creditUtilPct: { fontSize: 11, fontWeight: '700' },
+  progressTrack: {
+    height: 6,
+    backgroundColor: '#0F172A',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressFill: { height: '100%', borderRadius: 999 },
   accountFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -536,6 +828,20 @@ const styles = StyleSheet.create({
   },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   switchLabel: { color: '#CBD5E1', fontSize: 13, fontWeight: '600' },
+  typeSelectBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  typeSelectBtnActive: {
+    backgroundColor: '#0369A1',
+    borderColor: '#38BDF8',
+  },
+  typeSelectText: { color: '#F8FAFC', fontSize: 11, fontWeight: '700' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.85)',

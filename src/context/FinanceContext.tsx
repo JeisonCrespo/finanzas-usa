@@ -3,7 +3,10 @@ import {
   BankAccount,
   Category,
   CategoryBreakdown,
+  LoanRecord,
+  MonthlyBudgetItem,
   RecurringItem,
+  SavingsGoal,
   Transaction,
 } from '../types/finance';
 import {
@@ -21,6 +24,9 @@ export interface AppBackupPayload {
   categories: Category[];
   transactions: Transaction[];
   recurringItems: RecurringItem[];
+  monthlyBudgets?: MonthlyBudgetItem[];
+  savingsGoals?: SavingsGoal[];
+  loans?: LoanRecord[];
 }
 
 export interface TransferParams {
@@ -38,28 +44,54 @@ interface FinanceContextType {
   categories: Category[];
   transactions: Transaction[];
   recurringItems: RecurringItem[];
+  monthlyBudgets: MonthlyBudgetItem[];
+  savingsGoals: SavingsGoal[];
+  loans: LoanRecord[];
   backendUrl: string;
   setBackendUrl: (url: string) => Promise<void>;
   includedTotalBalance: number;
   excludedTotalBalance: number;
   netWorthBalance: number;
+  // Cuentas y Tarjetas de Crédito
   toggleAccountIncludeInTotal: (accountId: string) => Promise<void>;
   addManualAccount: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
+  updateCreditCardDetails: (
+    accountId: string,
+    creditLimit: number,
+    closingDay: number,
+    dueDay: number
+  ) => Promise<void>;
   connectSandboxUSBank: (bankPresetId: string, includeInTotal: boolean) => Promise<void>;
   deleteAccount: (accountId: string) => Promise<void>;
+  // Categorías (Separadas en Ajustes)
   addCategory: (category: Omit<Category, 'id' | 'isCustom'>) => Promise<void>;
-  updateCategoryBudget: (categoryId: string, monthlyBudget: number) => Promise<void>;
   deleteCategory: (categoryId: string) => Promise<void>;
+  // Presupuestos Mensuales (Apartado Independiente)
+  addMonthlyBudget: (budget: Omit<MonthlyBudgetItem, 'id' | 'manualSpent'>) => Promise<void>;
+  addManualSpendToBudget: (budgetId: string, extraAmount: number) => Promise<void>;
+  deleteMonthlyBudget: (budgetId: string) => Promise<void>;
+  getBudgetSpentAmount: (budget: MonthlyBudgetItem) => number;
+  // Metas de Ahorro (Savings Goals)
+  addSavingsGoal: (goal: Omit<SavingsGoal, 'id'>) => Promise<void>;
+  updateSavingsGoalAmount: (goalId: string, deltaAmount: number) => Promise<void>;
+  deleteSavingsGoal: (goalId: string) => Promise<void>;
+  // Préstamos y Deudas (Me deben / Yo debo)
+  addLoanRecord: (loan: Omit<LoanRecord, 'id' | 'paidAmount' | 'isSettled'>) => Promise<void>;
+  registerLoanPayment: (loanId: string, paymentAmount: number) => Promise<void>;
+  deleteLoanRecord: (loanId: string) => Promise<void>;
+  // Transacciones y Transferencias
   addTransaction: (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => Promise<void>;
   transferBetweenAccounts: (params: TransferParams) => Promise<void>;
   deleteTransaction: (txId: string) => Promise<void>;
+  // Recurrentes
   addRecurringItem: (item: Omit<RecurringItem, 'id' | 'active'>) => Promise<void>;
   confirmRecurringItem: (recurringId: string, customAmount?: number, customFee?: number) => Promise<void>;
   postponeRecurringItem: (recurringId: string, daysToPostpone: number) => Promise<void>;
   skipRecurringCycle: (recurringId: string) => Promise<void>;
   deleteRecurringItem: (recurringId: string) => Promise<void>;
-  getCategoryBreakdown: (type: 'expense' | 'income', accountFilterId?: string) => CategoryBreakdown[];
-  getCategorySpentThisMonth: (categoryId: string) => number;
+  // Gráficas
+  getCategoryBreakdown: (type: 'expense' | 'income', accountFilterId?: string, yearMonthFilter?: string) => CategoryBreakdown[];
+  // Respaldo y Reinicio
   resetToZero: () => Promise<void>;
   exportBackupJson: () => string;
   importBackupJson: (rawJson: string) => Promise<void>;
@@ -74,6 +106,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
+  const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudgetItem[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const [loans, setLoans] = useState<LoanRecord[]>([]);
   const [backendUrl, setBackendUrlState] = useState<string>(PLAID_BACKEND_URL);
 
   const refreshAll = useCallback(async () => {
@@ -105,6 +140,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           plaidItemId: r.plaid_item_id ?? undefined,
           color: r.color,
           lastSyncedAt: r.last_synced_at ?? undefined,
+          creditLimit: Number(r.credit_limit || 0),
+          closingDay: Number(r.closing_day || 0),
+          dueDay: Number(r.due_day || 0),
         }))
       );
 
@@ -117,7 +155,47 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           color: c.color,
           icon: c.icon,
           isCustom: Boolean(c.is_custom),
-          monthlyBudget: Number(c.monthly_budget || 0),
+        }))
+      );
+
+      const rawBudgets = await db.getAllAsync<any>('SELECT * FROM monthly_budgets ORDER BY rowid DESC');
+      setMonthlyBudgets(
+        rawBudgets.map((b) => ({
+          id: b.id,
+          title: b.title,
+          limitAmount: Number(b.limit_amount),
+          categoryId: b.category_id ?? undefined,
+          manualSpent: Number(b.manual_spent || 0),
+          color: b.color,
+          icon: b.icon,
+        }))
+      );
+
+      const rawGoals = await db.getAllAsync<any>('SELECT * FROM savings_goals ORDER BY rowid DESC');
+      setSavingsGoals(
+        rawGoals.map((g) => ({
+          id: g.id,
+          title: g.title,
+          targetAmount: Number(g.target_amount),
+          savedAmount: Number(g.saved_amount || 0),
+          color: g.color,
+          icon: g.icon,
+          deadline: g.deadline ?? undefined,
+        }))
+      );
+
+      const rawLoans = await db.getAllAsync<any>('SELECT * FROM loans ORDER BY is_settled ASC, rowid DESC');
+      setLoans(
+        rawLoans.map((l) => ({
+          id: l.id,
+          personName: l.person_name,
+          direction: l.direction,
+          totalAmount: Number(l.total_amount),
+          paidAmount: Number(l.paid_amount || 0),
+          notes: l.notes ?? undefined,
+          date: l.date,
+          dueDate: l.due_date ?? undefined,
+          isSettled: Boolean(l.is_settled),
         }))
       );
 
@@ -213,8 +291,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const id = `acc-${Date.now()}`;
     await db.runAsync(
       `INSERT INTO accounts (
-        id, name, institution, mask, type, balance, currency, include_in_total, is_plaid_connected, color
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        id, name, institution, mask, type, balance, currency, include_in_total, is_plaid_connected, color,
+        credit_limit, closing_day, due_day
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       [
         id,
         account.name,
@@ -225,7 +304,24 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         account.currency || 'USD',
         account.includeInTotal ? 1 : 0,
         account.color,
+        account.creditLimit ?? 0,
+        account.closingDay ?? 0,
+        account.dueDay ?? 0,
       ]
+    );
+    await refreshAll();
+  };
+
+  const updateCreditCardDetails = async (
+    accountId: string,
+    creditLimit: number,
+    closingDay: number,
+    dueDay: number
+  ) => {
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE accounts SET credit_limit = ?, closing_day = ?, due_day = ? WHERE id = ?`,
+      [creditLimit, closingDay, dueDay, accountId]
     );
     await refreshAll();
   };
@@ -242,19 +338,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await db.runAsync(
       `INSERT INTO accounts (
         id, name, institution, mask, type, balance, currency,
-        include_in_total, is_plaid_connected, plaid_account_id, color, last_synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, 1, ?, ?, ?)`,
+        include_in_total, is_plaid_connected, plaid_account_id, color, last_synced_at,
+        credit_limit, closing_day, due_day
+      ) VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, 1, ?, ?, ?, ?, ?, ?)`,
       [
         accountId,
         preset.accountName,
         preset.institution,
         preset.mask,
         preset.type,
-        preset.balance,
+        Math.abs(preset.balance),
         includeInTotal ? 1 : 0,
         `plaid_${preset.id}`,
         preset.color,
         nowIso,
+        preset.type === 'credit' ? 5000 : 0,
+        preset.type === 'credit' ? 20 : 0,
+        preset.type === 'credit' ? 15 : 0,
       ]
     );
 
@@ -296,30 +396,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const db = await getDb();
     const id = `cat-custom-${Date.now()}`;
     await db.runAsync(
-      `INSERT INTO categories (id, name, type, color, icon, is_custom, monthly_budget) VALUES (?, ?, ?, ?, ?, 1, ?)`,
-      [
-        id,
-        category.name.trim(),
-        category.type,
-        category.color,
-        category.icon,
-        category.monthlyBudget && category.monthlyBudget > 0 ? category.monthlyBudget : 0,
-      ]
+      `INSERT INTO categories (id, name, type, color, icon, is_custom) VALUES (?, ?, ?, ?, ?, 1)`,
+      [id, category.name.trim(), category.type, category.color, category.icon]
     );
-    await refreshAll();
-  };
-
-  /**
-   * Permite definir o cambiar el presupuesto mensual ($ USD) de cualquier categoría
-   * (ej. Supermercado = $200). Si pones 0, queda sin límite.
-   */
-  const updateCategoryBudget = async (categoryId: string, monthlyBudget: number) => {
-    const db = await getDb();
-    const cleanBudget = monthlyBudget > 0 ? monthlyBudget : 0;
-    await db.runAsync('UPDATE categories SET monthly_budget = ? WHERE id = ?', [
-      cleanBudget,
-      categoryId,
-    ]);
     await refreshAll();
   };
 
@@ -329,6 +408,136 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await refreshAll();
   };
 
+  // --- PRESUPUESTOS MENSUALES (INDEPENDIENTES DE CATEGORÍAS) ---
+  const addMonthlyBudget = async (budget: Omit<MonthlyBudgetItem, 'id' | 'manualSpent'>) => {
+    const db = await getDb();
+    const id = `budget-${Date.now()}`;
+    await db.runAsync(
+      `INSERT INTO monthly_budgets (id, title, limit_amount, category_id, manual_spent, color, icon)
+       VALUES (?, ?, ?, ?, 0, ?, ?)`,
+      [
+        id,
+        budget.title.trim(),
+        budget.limitAmount,
+        budget.categoryId || null,
+        budget.color,
+        budget.icon,
+      ]
+    );
+    await refreshAll();
+  };
+
+  const addManualSpendToBudget = async (budgetId: string, extraAmount: number) => {
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE monthly_budgets SET manual_spent = MAX(0, manual_spent + ?) WHERE id = ?`,
+      [extraAmount, budgetId]
+    );
+    await refreshAll();
+  };
+
+  const deleteMonthlyBudget = async (budgetId: string) => {
+    const db = await getDb();
+    await db.runAsync(`DELETE FROM monthly_budgets WHERE id = ?`, [budgetId]);
+    await refreshAll();
+  };
+
+  const getBudgetSpentAmount = useCallback(
+    (budget: MonthlyBudgetItem): number => {
+      const currentYearMonth = new Date().toISOString().slice(0, 7);
+      let catSpent = 0;
+      if (budget.categoryId) {
+        catSpent = transactions
+          .filter(
+            (t) =>
+              t.type === 'expense' &&
+              t.categoryId === budget.categoryId &&
+              t.date.startsWith(currentYearMonth)
+          )
+          .reduce((sum, t) => sum + t.amount, 0);
+      }
+      return catSpent + (budget.manualSpent || 0);
+    },
+    [transactions]
+  );
+
+  // --- METAS DE AHORRO (SAVINGS GOALS) ---
+  const addSavingsGoal = async (goal: Omit<SavingsGoal, 'id'>) => {
+    const db = await getDb();
+    const id = `goal-${Date.now()}`;
+    await db.runAsync(
+      `INSERT INTO savings_goals (id, title, target_amount, saved_amount, color, icon, deadline)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        goal.title.trim(),
+        goal.targetAmount,
+        goal.savedAmount || 0,
+        goal.color,
+        goal.icon,
+        goal.deadline || null,
+      ]
+    );
+    await refreshAll();
+  };
+
+  const updateSavingsGoalAmount = async (goalId: string, deltaAmount: number) => {
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE savings_goals SET saved_amount = MAX(0, saved_amount + ?) WHERE id = ?`,
+      [deltaAmount, goalId]
+    );
+    await refreshAll();
+  };
+
+  const deleteSavingsGoal = async (goalId: string) => {
+    const db = await getDb();
+    await db.runAsync(`DELETE FROM savings_goals WHERE id = ?`, [goalId]);
+    await refreshAll();
+  };
+
+  // --- PRÉSTAMOS Y DEUDAS (ME DEBEN / YO DEBO) ---
+  const addLoanRecord = async (loan: Omit<LoanRecord, 'id' | 'paidAmount' | 'isSettled'>) => {
+    const db = await getDb();
+    const id = `loan-${Date.now()}`;
+    await db.runAsync(
+      `INSERT INTO loans (id, person_name, direction, total_amount, paid_amount, notes, date, due_date, is_settled)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0)`,
+      [
+        id,
+        loan.personName.trim(),
+        loan.direction,
+        loan.totalAmount,
+        loan.notes || null,
+        loan.date,
+        loan.dueDate || null,
+      ]
+    );
+    await refreshAll();
+  };
+
+  const registerLoanPayment = async (loanId: string, paymentAmount: number) => {
+    const target = loans.find((l) => l.id === loanId);
+    if (!target || paymentAmount <= 0) return;
+
+    const newPaid = Math.min(target.totalAmount, target.paidAmount + paymentAmount);
+    const settled = newPaid >= target.totalAmount ? 1 : 0;
+
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE loans SET paid_amount = ?, is_settled = ? WHERE id = ?`,
+      [newPaid, settled, loanId]
+    );
+    await refreshAll();
+  };
+
+  const deleteLoanRecord = async (loanId: string) => {
+    const db = await getDb();
+    await db.runAsync(`DELETE FROM loans WHERE id = ?`, [loanId]);
+    await refreshAll();
+  };
+
+  // --- TRANSACCIONES Y TRANSFERENCIAS ---
   const addTransaction = async (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => {
     const db = await getDb();
     const id = `tx-${Date.now()}`;
@@ -353,16 +562,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ]
     );
 
+    const acc = accounts.find((a) => a.id === tx.accountId);
+    const isCreditCard = acc?.type === 'credit';
+
     if (tx.type === 'income') {
       const netIncome = tx.amount - feeVal;
+      // En tarjeta de crédito un ingreso/abono reduce la deuda usada
+      const delta = isCreditCard ? -netIncome : netIncome;
       await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
-        netIncome,
+        delta,
         tx.accountId,
       ]);
     } else if (tx.type === 'expense') {
       const totalOut = tx.amount + feeVal;
-      await db.runAsync('UPDATE accounts SET balance = balance - ? WHERE id = ?', [
-        totalOut,
+      // En tarjeta de crédito un gasto aumenta el saldo utilizado
+      const delta = isCreditCard ? totalOut : -totalOut;
+      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+        delta,
         tx.accountId,
       ]);
     }
@@ -402,10 +618,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       fromAccountId,
     ]);
 
-    await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
-      amount,
-      toAccountId,
-    ]);
+    // Si la cuenta destino es una tarjeta de crédito, pagarle reduce la deuda usada
+    if (toAcc?.type === 'credit') {
+      await db.runAsync('UPDATE accounts SET balance = MAX(0, balance - ?) WHERE id = ?', [
+        amount,
+        toAccountId,
+      ]);
+    } else {
+      await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
+        amount,
+        toAccountId,
+      ]);
+    }
 
     await refreshAll();
   };
@@ -536,6 +760,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       DELETE FROM transactions;
       DELETE FROM recurring_items;
       DELETE FROM accounts;
+      DELETE FROM monthly_budgets;
+      DELETE FROM savings_goals;
+      DELETE FROM loans;
     `);
     await seedDefaultCategoriesOnly(db);
     await refreshAll();
@@ -543,12 +770,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const exportBackupJson = (): string => {
     const payload: AppBackupPayload = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       accounts,
       categories,
       transactions,
       recurringItems,
+      monthlyBudgets,
+      savingsGoals,
+      loans,
     };
     return JSON.stringify(payload, null, 2);
   };
@@ -565,12 +795,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       DELETE FROM recurring_items;
       DELETE FROM accounts;
       DELETE FROM categories;
+      DELETE FROM monthly_budgets;
+      DELETE FROM savings_goals;
+      DELETE FROM loans;
     `);
 
     for (const c of parsed.categories) {
       await db.runAsync(
-        `INSERT INTO categories (id, name, type, color, icon, is_custom, monthly_budget) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [c.id, c.name, c.type, c.color, c.icon, c.isCustom ? 1 : 0, c.monthlyBudget ?? 0]
+        `INSERT INTO categories (id, name, type, color, icon, is_custom) VALUES (?, ?, ?, ?, ?, ?)`,
+        [c.id, c.name, c.type, c.color, c.icon, c.isCustom ? 1 : 0]
       );
     }
 
@@ -578,8 +811,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await db.runAsync(
         `INSERT INTO accounts (
           id, name, institution, mask, type, balance, currency,
-          include_in_total, is_plaid_connected, plaid_account_id, plaid_item_id, color, last_synced_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          include_in_total, is_plaid_connected, plaid_account_id, plaid_item_id, color, last_synced_at,
+          credit_limit, closing_day, due_day
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           a.id,
           a.name,
@@ -594,6 +828,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           a.plaidItemId ?? null,
           a.color,
           a.lastSyncedAt ?? null,
+          a.creditLimit ?? 0,
+          a.closingDay ?? 0,
+          a.dueDay ?? 0,
         ]
       );
     }
@@ -642,32 +879,53 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
     }
 
+    for (const b of parsed.monthlyBudgets || []) {
+      await db.runAsync(
+        `INSERT INTO monthly_budgets (id, title, limit_amount, category_id, manual_spent, color, icon)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [b.id, b.title, b.limitAmount, b.categoryId ?? null, b.manualSpent || 0, b.color, b.icon]
+      );
+    }
+
+    for (const g of parsed.savingsGoals || []) {
+      await db.runAsync(
+        `INSERT INTO savings_goals (id, title, target_amount, saved_amount, color, icon, deadline)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [g.id, g.title, g.targetAmount, g.savedAmount || 0, g.color, g.icon, g.deadline ?? null]
+      );
+    }
+
+    for (const l of parsed.loans || []) {
+      await db.runAsync(
+        `INSERT INTO loans (id, person_name, direction, total_amount, paid_amount, notes, date, due_date, is_settled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          l.id,
+          l.personName,
+          l.direction,
+          l.totalAmount,
+          l.paidAmount || 0,
+          l.notes ?? null,
+          l.date,
+          l.dueDate ?? null,
+          l.isSettled ? 1 : 0,
+        ]
+      );
+    }
+
     await refreshAll();
   };
 
-  /**
-   * Calcula cuánto se ha gastado en el mes actual (YYYY-MM) en una categoría específica.
-   */
-  const getCategorySpentThisMonth = useCallback(
-    (categoryId: string): number => {
-      const currentYearMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-      return transactions
-        .filter(
-          (t) =>
-            t.type === 'expense' &&
-            t.categoryId === categoryId &&
-            t.date.startsWith(currentYearMonth)
-        )
-        .reduce((sum, t) => sum + t.amount, 0);
-    },
-    [transactions]
-  );
-
   const getCategoryBreakdown = useCallback(
-    (type: 'expense' | 'income', accountFilterId?: string): CategoryBreakdown[] => {
+    (
+      type: 'expense' | 'income',
+      accountFilterId?: string,
+      yearMonthFilter?: string
+    ): CategoryBreakdown[] => {
       const relevantTx = transactions.filter(
         (t) =>
-          !accountFilterId || accountFilterId === 'all' || t.accountId === accountFilterId
+          (!accountFilterId || accountFilterId === 'all' || t.accountId === accountFilterId) &&
+          (!yearMonthFilter || yearMonthFilter === 'all' || t.date.startsWith(yearMonthFilter))
       );
 
       const map = new Map<string, { total: number; count: number }>();
@@ -706,7 +964,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           total: stats.total,
           percentage: (stats.total / grandTotal) * 100,
           count: stats.count,
-          monthlyBudget: cat?.monthlyBudget || 0,
         });
       }
 
@@ -723,6 +980,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         categories,
         transactions,
         recurringItems,
+        monthlyBudgets,
+        savingsGoals,
+        loans,
         backendUrl,
         setBackendUrl,
         includedTotalBalance,
@@ -730,11 +990,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         netWorthBalance,
         toggleAccountIncludeInTotal,
         addManualAccount,
+        updateCreditCardDetails,
         connectSandboxUSBank,
         deleteAccount,
         addCategory,
-        updateCategoryBudget,
         deleteCategory,
+        addMonthlyBudget,
+        addManualSpendToBudget,
+        deleteMonthlyBudget,
+        getBudgetSpentAmount,
+        addSavingsGoal,
+        updateSavingsGoalAmount,
+        deleteSavingsGoal,
+        addLoanRecord,
+        registerLoanPayment,
+        deleteLoanRecord,
         addTransaction,
         transferBetweenAccounts,
         deleteTransaction,
@@ -744,7 +1014,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         skipRecurringCycle,
         deleteRecurringItem,
         getCategoryBreakdown,
-        getCategorySpentThisMonth,
         resetToZero,
         exportBackupJson,
         importBackupJson,

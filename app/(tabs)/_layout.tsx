@@ -35,23 +35,25 @@ export default function TabsLayout() {
         options={{
           title: 'Bancos US',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="business-outline" size={size} color={String(color)} />
+            <Ionicons name="card-outline" size={size} color={String(color)} />
           ),
         }}
       />
       <Tabs.Screen
         name="recurring"
         options={{
-          title: 'Recurrentes',
+          title: 'Control',
+          headerTitle: 'Recurrentes, Préstamos y Metas',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={String(color)} />
+            <Ionicons name="layers-outline" size={size} color={String(color)} />
           ),
         }}
       />
       <Tabs.Screen
         name="analytics"
         options={{
-          title: 'Gráficas',
+          title: 'Presupuesto',
+          headerTitle: 'Gráficas y Presupuesto Mensual',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="pie-chart-outline" size={size} color={String(color)} />
           ),
@@ -60,9 +62,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="categories"
         options={{
-          title: 'Categorías',
+          title: 'Ajustes',
+          headerTitle: 'Ajustes y Categorías',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="pricetags-outline" size={size} color={String(color)} />
+            <Ionicons name="settings-outline" size={size} color={String(color)} />
           ),
         }}
       />

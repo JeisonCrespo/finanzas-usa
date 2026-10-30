@@ -18,6 +18,10 @@ export interface BankAccount {
   plaidItemId?: string;
   color: string;
   lastSyncedAt?: string;
+  // Campos exclusivos para control de Tarjetas de Crédito en EE. UU.
+  creditLimit?: number; // Límite total de la tarjeta ($ USD)
+  closingDay?: number; // Día de corte (Statement Closing Date, 1-31)
+  dueDay?: number; // Día límite de pago (Payment Due Date, 1-31)
 }
 
 export interface Category {
@@ -27,7 +31,40 @@ export interface Category {
   color: string;
   icon: string;
   isCustom: boolean;
-  monthlyBudget?: number; // Presupuesto mensual opcional ($ USD), si es 0 o undefined no tiene tope
+}
+
+export interface MonthlyBudgetItem {
+  id: string;
+  title: string; // Ej. "Comida del mes", "Salidas", "Juegos Steam"
+  limitAmount: number; // Ej. 200.00
+  categoryId?: string; // Opcional: si se vincula a una categoría suma automático, más manualSpent
+  manualSpent: number; // Monto manual adicional o directo
+  color: string;
+  icon: string;
+}
+
+export interface SavingsGoal {
+  id: string;
+  title: string; // Ej. "Fondo de Emergencia", "PC Gamer", "Viaje"
+  targetAmount: number;
+  savedAmount: number;
+  color: string;
+  icon: string;
+  deadline?: string;
+}
+
+export type LoanDirection = 'lent' | 'borrowed'; // 'lent' = Presté (Me deben) | 'borrowed' = Pedí prestado (Yo debo)
+
+export interface LoanRecord {
+  id: string;
+  personName: string;
+  direction: LoanDirection;
+  totalAmount: number;
+  paidAmount: number;
+  notes?: string;
+  date: string;
+  dueDate?: string;
+  isSettled: boolean;
 }
 
 export interface Transaction {
@@ -68,5 +105,4 @@ export interface CategoryBreakdown {
   total: number;
   percentage: number;
   count: number;
-  monthlyBudget?: number;
 }

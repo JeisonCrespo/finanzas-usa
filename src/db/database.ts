@@ -18,21 +18,21 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
-  // Categorías de Gastos (incluye presupuestos sugeridos opcionales editables)
-  { id: 'cat-housing', name: 'Vivienda / Renta', type: 'expense', color: '#6366F1', icon: 'home-outline', isCustom: false, monthlyBudget: 0 },
-  { id: 'cat-groceries', name: 'Supermercado / Comida', type: 'expense', color: '#10B981', icon: 'cart-outline', isCustom: false, monthlyBudget: 200 },
-  { id: 'cat-dining', name: 'Restaurantes', type: 'expense', color: '#F59E0B', icon: 'restaurant-outline', isCustom: false, monthlyBudget: 120 },
-  { id: 'cat-transport', name: 'Transporte / Gasolina', type: 'expense', color: '#3B82F6', icon: 'car-outline', isCustom: false, monthlyBudget: 0 },
-  { id: 'cat-utilities', name: 'Servicios (Luz, Internet)', type: 'expense', color: '#06B6D4', icon: 'flash-outline', isCustom: false, monthlyBudget: 0 },
-  { id: 'cat-subscriptions', name: 'Streaming (Netflix, Spotify)', type: 'expense', color: '#E50914', icon: 'mci:netflix', isCustom: false, monthlyBudget: 50 },
-  { id: 'cat-gaming', name: 'Gaming (Steam, PlayStation, Xbox)', type: 'expense', color: '#38BDF8', icon: 'mci:steam', isCustom: false, monthlyBudget: 60 },
-  { id: 'cat-health', name: 'Salud y Farmacia', type: 'expense', color: '#EC4899', icon: 'medkit-outline', isCustom: false, monthlyBudget: 0 },
-  { id: 'cat-shopping', name: 'Compras / Amazon', type: 'expense', color: '#FF9900', icon: 'logo-amazon', isCustom: false, monthlyBudget: 0 },
-  { id: 'cat-fees', name: 'Comisiones Bancarias / ATM', type: 'expense', color: '#94A3B8', icon: 'card-outline', isCustom: false, monthlyBudget: 0 },
+  // Categorías de Gastos
+  { id: 'cat-housing', name: 'Vivienda / Renta', type: 'expense', color: '#6366F1', icon: 'home-outline', isCustom: false },
+  { id: 'cat-groceries', name: 'Supermercado / Comida', type: 'expense', color: '#10B981', icon: 'cart-outline', isCustom: false },
+  { id: 'cat-dining', name: 'Restaurantes', type: 'expense', color: '#F59E0B', icon: 'restaurant-outline', isCustom: false },
+  { id: 'cat-transport', name: 'Transporte / Gasolina', type: 'expense', color: '#3B82F6', icon: 'car-outline', isCustom: false },
+  { id: 'cat-utilities', name: 'Servicios (Luz, Internet)', type: 'expense', color: '#06B6D4', icon: 'flash-outline', isCustom: false },
+  { id: 'cat-subscriptions', name: 'Streaming (Netflix, Spotify)', type: 'expense', color: '#E50914', icon: 'mci:netflix', isCustom: false },
+  { id: 'cat-gaming', name: 'Gaming (Steam, PlayStation, Xbox)', type: 'expense', color: '#38BDF8', icon: 'mci:steam', isCustom: false },
+  { id: 'cat-health', name: 'Salud y Farmacia', type: 'expense', color: '#EC4899', icon: 'medkit-outline', isCustom: false },
+  { id: 'cat-shopping', name: 'Compras / Amazon', type: 'expense', color: '#FF9900', icon: 'logo-amazon', isCustom: false },
+  { id: 'cat-fees', name: 'Comisiones Bancarias / ATM', type: 'expense', color: '#94A3B8', icon: 'card-outline', isCustom: false },
   // Categorías de Ingresos
-  { id: 'cat-salary', name: 'Nómina / Paycheck', type: 'income', color: '#22C55E', icon: 'cash-outline', isCustom: false, monthlyBudget: 0 },
-  { id: 'cat-freelance', name: 'Freelance / Negocio', type: 'income', color: '#14B8A6', icon: 'briefcase-outline', isCustom: false, monthlyBudget: 0 },
-  { id: 'cat-investments', name: 'Dividendos / Intereses', type: 'income', color: '#EAB308', icon: 'trending-up-outline', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-salary', name: 'Nómina / Paycheck', type: 'income', color: '#22C55E', icon: 'cash-outline', isCustom: false },
+  { id: 'cat-freelance', name: 'Freelance / Negocio', type: 'income', color: '#14B8A6', icon: 'briefcase-outline', isCustom: false },
+  { id: 'cat-investments', name: 'Dividendos / Intereses', type: 'income', color: '#EAB308', icon: 'trending-up-outline', isCustom: false },
 ];
 
 async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -57,7 +57,10 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       plaid_account_id TEXT,
       plaid_item_id TEXT,
       color TEXT NOT NULL,
-      last_synced_at TEXT
+      last_synced_at TEXT,
+      credit_limit REAL DEFAULT 0,
+      closing_day INTEGER DEFAULT 0,
+      due_day INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS categories (
@@ -66,8 +69,39 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       type TEXT NOT NULL,
       color TEXT NOT NULL,
       icon TEXT NOT NULL,
-      is_custom INTEGER NOT NULL DEFAULT 0,
-      monthly_budget REAL NOT NULL DEFAULT 0
+      is_custom INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS monthly_budgets (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      limit_amount REAL NOT NULL,
+      category_id TEXT,
+      manual_spent REAL NOT NULL DEFAULT 0,
+      color TEXT NOT NULL,
+      icon TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS savings_goals (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      target_amount REAL NOT NULL,
+      saved_amount REAL NOT NULL DEFAULT 0,
+      color TEXT NOT NULL,
+      icon TEXT NOT NULL,
+      deadline TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS loans (
+      id TEXT PRIMARY KEY NOT NULL,
+      person_name TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      total_amount REAL NOT NULL,
+      paid_amount REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      date TEXT NOT NULL,
+      due_date TEXT,
+      is_settled INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -106,17 +140,11 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   `);
 
   // Migraciones seguras para bases de datos ya creadas
-  try {
-    await db.execAsync(`ALTER TABLE transactions ADD COLUMN fee REAL NOT NULL DEFAULT 0;`);
-  } catch {}
-
-  try {
-    await db.execAsync(`ALTER TABLE transactions ADD COLUMN to_account_id TEXT;`);
-  } catch {}
-
-  try {
-    await db.execAsync(`ALTER TABLE categories ADD COLUMN monthly_budget REAL NOT NULL DEFAULT 0;`);
-  } catch {}
+  try { await db.execAsync(`ALTER TABLE transactions ADD COLUMN fee REAL NOT NULL DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE transactions ADD COLUMN to_account_id TEXT;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN credit_limit REAL DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN closing_day INTEGER DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN due_day INTEGER DEFAULT 0;`); } catch {}
 
   const initializedFlag = await db.getFirstAsync<{ value: string }>(
     "SELECT value FROM app_settings WHERE key = 'db_seeded'"
@@ -138,8 +166,8 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
 export async function seedDefaultCategoriesOnly(db: SQLite.SQLiteDatabase): Promise<void> {
   for (const cat of DEFAULT_CATEGORIES) {
     await db.runAsync(
-      `INSERT OR IGNORE INTO categories (id, name, type, color, icon, is_custom, monthly_budget) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [cat.id, cat.name, cat.type, cat.color, cat.icon, cat.isCustom ? 1 : 0, cat.monthlyBudget ?? 0]
+      `INSERT OR IGNORE INTO categories (id, name, type, color, icon, is_custom) VALUES (?, ?, ?, ?, ?, ?)`,
+      [cat.id, cat.name, cat.type, cat.color, cat.icon, cat.isCustom ? 1 : 0]
     );
   }
 }
@@ -163,18 +191,21 @@ async function seedInitialData(db: SQLite.SQLiteDatabase): Promise<void> {
       lastSyncedAt: new Date().toISOString(),
     },
     {
-      id: 'acc-bofa-checking',
-      name: 'Advantage Banking',
+      id: 'acc-bofa-credit',
+      name: 'Customized Cash Rewards (Tarjeta)',
       institution: 'Bank of America',
       mask: '9912',
-      type: 'checking',
-      balance: 1280.40,
+      type: 'credit',
+      balance: 420.00, // Deuda actual usada en la tarjeta
       currency: 'USD',
-      includeInTotal: true,
+      includeInTotal: false,
       isPlaidConnected: true,
       plaidAccountId: 'plaid_bofa_01',
       color: '#DC2626',
       lastSyncedAt: new Date().toISOString(),
+      creditLimit: 3000,
+      closingDay: 18,
+      dueDay: 15,
     },
     {
       id: 'acc-ally-savings',
@@ -196,8 +227,9 @@ async function seedInitialData(db: SQLite.SQLiteDatabase): Promise<void> {
     await db.runAsync(
       `INSERT INTO accounts (
         id, name, institution, mask, type, balance, currency,
-        include_in_total, is_plaid_connected, plaid_account_id, color, last_synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        include_in_total, is_plaid_connected, plaid_account_id, color, last_synced_at,
+        credit_limit, closing_day, due_day
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         acc.id,
         acc.name,
@@ -211,11 +243,36 @@ async function seedInitialData(db: SQLite.SQLiteDatabase): Promise<void> {
         acc.plaidAccountId ?? null,
         acc.color,
         acc.lastSyncedAt ?? null,
+        acc.creditLimit ?? 0,
+        acc.closingDay ?? 0,
+        acc.dueDay ?? 0,
       ]
     );
   }
 
+  // Presupuestos mensuales independientes de ejemplo
+  await db.runAsync(
+    `INSERT INTO monthly_budgets (id, title, limit_amount, category_id, manual_spent, color, icon)
+     VALUES ('b-food', 'Comida y Supermercado', 200, 'cat-groceries', 0, '#10B981', 'cart-outline')`
+  );
+  await db.runAsync(
+    `INSERT INTO monthly_budgets (id, title, limit_amount, category_id, manual_spent, color, icon)
+     VALUES ('b-games', 'Juegos y Suscripciones', 80, 'cat-gaming', 0, '#38BDF8', 'mci:steam')`
+  );
+
+  // Meta de ahorro de ejemplo
+  await db.runAsync(
+    `INSERT INTO savings_goals (id, title, target_amount, saved_amount, color, icon, deadline)
+     VALUES ('goal-1', 'Fondo de Emergencia US', 5000, 1250, '#10B981', 'mci:piggy-bank-outline', '2027-06-01')`
+  );
+
+  // Préstamo de ejemplo
   const today = new Date().toISOString().split('T')[0];
+  await db.runAsync(
+    `INSERT INTO loans (id, person_name, direction, total_amount, paid_amount, notes, date, is_settled)
+     VALUES ('loan-1', 'Carlos (Zelle)', 'lent', 150, 50, 'Préstamo para arreglo del carro', ?, 0)`,
+    [today]
+  );
 
   const sampleTransactions: Transaction[] = [
     {
@@ -246,7 +303,7 @@ async function seedInitialData(db: SQLite.SQLiteDatabase): Promise<void> {
     },
     {
       id: 'tx-3',
-      accountId: 'acc-bofa-checking',
+      accountId: 'acc-bofa-credit',
       categoryId: 'cat-gaming',
       type: 'expense',
       amount: 59.99,
@@ -299,23 +356,11 @@ async function seedInitialData(db: SQLite.SQLiteDatabase): Promise<void> {
       amount: 22.99,
       type: 'expense',
       categoryId: 'cat-subscriptions',
-      accountId: 'acc-bofa-checking',
+      accountId: 'acc-bofa-credit',
       frequency: 'monthly',
       nextDueDate: today,
       active: true,
       notes: 'Suscripción mensual Netflix',
-    },
-    {
-      id: 'rec-steam',
-      title: 'Steam / Xbox Game Pass',
-      amount: 19.99,
-      type: 'expense',
-      categoryId: 'cat-gaming',
-      accountId: 'acc-chase-checking',
-      frequency: 'monthly',
-      nextDueDate: today,
-      active: true,
-      notes: 'Suscripción Gaming',
     },
   ];
 

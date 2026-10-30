@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,6 @@ export default function DashboardScreen() {
     deleteTransaction,
     confirmRecurringItem,
     postponeRecurringItem,
-    resetToZero,
   } = useFinance();
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -40,9 +39,50 @@ export default function DashboardScreen() {
   const [toAccountId, setToAccountId] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
 
+  // Buscador y Filtro por Mes en Historial (#1 pedido)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
   const today = new Date().toISOString().split('T')[0];
 
   const dueRecurring = recurringItems.filter((item) => item.nextDueDate <= today);
+
+  // Obtener lista única de meses (YYYY-MM) presentes en las transacciones
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    set.add(today.slice(0, 7));
+    for (const t of transactions) {
+      if (t.date && t.date.length >= 7) {
+        set.add(t.date.slice(0, 7));
+      }
+    }
+    return Array.from(set).sort().reverse();
+  }, [transactions, today]);
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      const matchesMonth =
+        selectedMonth === 'all' || tx.date.startsWith(selectedMonth);
+
+      if (!matchesMonth) return false;
+      if (!searchQuery.trim()) return true;
+
+      const q = searchQuery.toLowerCase();
+      const cat = categories.find((c) => c.id === tx.categoryId);
+      const acc = accounts.find((a) => a.id === tx.accountId);
+      return (
+        tx.description.toLowerCase().includes(q) ||
+        (cat?.name.toLowerCase().includes(q) ?? false) ||
+        (acc?.name.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [transactions, selectedMonth, searchQuery, categories, accounts]);
+
+  const filteredTotalExpense = useMemo(() => {
+    return filteredTransactions
+      .filter((t) => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount + (t.fee || 0), 0);
+  }, [filteredTransactions]);
 
   const openNewTransactionModal = (initialType: TransactionType = 'expense') => {
     setTxType(initialType);
@@ -66,7 +106,10 @@ export default function DashboardScreen() {
 
     if (txType === 'transfer') {
       if (!toAccountId || selectedAccountId === toAccountId) {
-        Alert.alert('Cuentas iguales', 'Elige una cuenta de origen y una cuenta de destino diferentes.');
+        Alert.alert(
+          'Cuentas iguales',
+          'Elige una cuenta de origen y una cuenta de destino diferentes.'
+        );
         return;
       }
       await transferBetweenAccounts({
@@ -94,23 +137,6 @@ export default function DashboardScreen() {
       date: today,
     });
     setShowAddModal(false);
-  };
-
-  const handleConfirmReset = () => {
-    Alert.alert(
-      'Empezar desde Cero ($0.00)',
-      'Esto borrará las cuentas y movimientos de prueba para que empieces desde cero con tus propios datos. Tus categorías e íconos (Netflix, Steam, etc.) se mantendrán.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sí, Empezar desde 0',
-          style: 'destructive',
-          onPress: async () => {
-            await resetToZero();
-          },
-        },
-      ]
-    );
   };
 
   return (
@@ -153,15 +179,8 @@ export default function DashboardScreen() {
               onPress={() => openNewTransactionModal('transfer')}
             >
               <Ionicons name="swap-horizontal-outline" size={16} color="#38BDF8" />
-              <Text style={styles.transferQuickText}>Pasar entre Cuentas</Text>
+              <Text style={styles.transferQuickText}>Pasar Dinero entre Cuentas</Text>
             </TouchableOpacity>
-
-            {(accounts.length > 0 || transactions.length > 0) && (
-              <TouchableOpacity style={styles.zeroBtn} onPress={handleConfirmReset}>
-                <Ionicons name="refresh-outline" size={15} color="#CBD5E1" />
-                <Text style={styles.zeroBtnText}>Empezar de 0</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
 
@@ -234,9 +253,9 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* Últimos Movimientos */}
+        {/* Encabezado de Movimientos + Botón Registrar */}
         <View style={styles.sectionHeaderSpread}>
-          <Text style={styles.sectionTitle}>Movimientos Recientes</Text>
+          <Text style={styles.sectionTitle}>Historial de Movimientos</Text>
           <TouchableOpacity
             style={styles.addBtnSmall}
             onPress={() => openNewTransactionModal('expense')}
@@ -246,16 +265,73 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {transactions.length === 0 ? (
+        {/* Buscador y Filtro por Mes (#1) */}
+        <View style={styles.searchBox}>
+          <Ionicons name="search-outline" size={18} color="#64748B" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar comercio, categoría o cuenta (ej. Steam, Walmart)..."
+            placeholderTextColor="#64748B"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.monthFilterScroll}
+        >
+          <TouchableOpacity
+            style={[
+              styles.monthChip,
+              selectedMonth === 'all' && styles.monthChipActive,
+            ]}
+            onPress={() => setSelectedMonth('all')}
+          >
+            <Text style={styles.monthChipText}>Todos los meses</Text>
+          </TouchableOpacity>
+
+          {availableMonths.map((ym) => (
+            <TouchableOpacity
+              key={ym}
+              style={[
+                styles.monthChip,
+                selectedMonth === ym && styles.monthChipActive,
+              ]}
+              onPress={() => setSelectedMonth(ym)}
+            >
+              <Text style={styles.monthChipText}>Mes: {ym}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {(searchQuery.trim() !== '' || selectedMonth !== 'all') && (
+          <View style={styles.filterSummaryBar}>
+            <Text style={styles.filterSummaryText}>
+              {filteredTransactions.length} resultados • Total gastos filtrados:{' '}
+              <Text style={{ color: '#F87171', fontWeight: '800' }}>
+                ${filteredTotalExpense.toFixed(2)}
+              </Text>
+            </Text>
+          </View>
+        )}
+
+        {filteredTransactions.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="sparkles-outline" size={30} color="#38BDF8" />
-            <Text style={styles.emptyStateTitle}>Todo limpio ($0.00)</Text>
+            <Text style={styles.emptyStateTitle}>Sin movimientos que coincidan</Text>
             <Text style={styles.emptyStateSub}>
-              Agrega tu primera cuenta en la pestaña "Bancos US" y luego registra tus gastos, transferencias o suscripciones (Netflix, Steam, Spotify...).
+              Usa el botón "+ Registrar" arriba para anotar un gasto, ingreso o transferencia.
             </Text>
           </View>
         ) : (
-          transactions.slice(0, 20).map((tx) => {
+          filteredTransactions.map((tx) => {
             const cat = categories.find((c) => c.id === tx.categoryId);
             const acc = accounts.find((a) => a.id === tx.accountId);
             const destAcc = tx.toAccountId
@@ -388,7 +464,7 @@ export default function DashboardScreen() {
               style={styles.input}
               placeholder={
                 txType === 'transfer'
-                  ? 'Ej. Pasar a cuenta de ahorros / Zelle...'
+                  ? 'Ej. Pasar a cuenta de ahorros / Pago tarjeta...'
                   : 'Ej. Steam, Netflix, Gasolina...'
               }
               placeholderTextColor="#64748B"
@@ -548,17 +624,6 @@ const styles = StyleSheet.create({
     borderColor: '#0284C7',
   },
   transferQuickText: { color: '#E0F2FE', fontSize: 12, fontWeight: '700' },
-  zeroBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: '#1E293B',
-  },
-  zeroBtnText: { color: '#CBD5E1', fontSize: 12, fontWeight: '600' },
   pendingSection: {
     backgroundColor: '#1E1B4B',
     borderRadius: 16,
@@ -610,7 +675,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   sectionTitle: { color: '#F8FAFC', fontSize: 17, fontWeight: '700' },
   addBtnSmall: {
@@ -623,6 +688,55 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   addBtnSmallText: { color: '#0F172A', fontWeight: '700', fontSize: 13 },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 10,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#F8FAFC',
+    fontSize: 13,
+    paddingVertical: 2,
+  },
+  monthFilterScroll: {
+    marginBottom: 12,
+  },
+  monthChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginRight: 8,
+  },
+  monthChipActive: {
+    backgroundColor: '#0369A1',
+    borderColor: '#38BDF8',
+  },
+  monthChipText: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterSummaryBar: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  filterSummaryText: { color: '#CBD5E1', fontSize: 12 },
   emptyState: {
     backgroundColor: '#0F172A',
     borderRadius: 16,

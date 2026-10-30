@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
-import { Category } from '../../src/types/finance';
 import { GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
 
 const COLOR_PALETTE = [
@@ -26,15 +25,15 @@ const COLOR_PALETTE = [
   '#10B981',
   '#EC4899',
   '#14B8A6',
+  '#6366F1',
+  '#F43F5E',
 ];
 
-export default function CategoriesScreen() {
+export default function SettingsAndCategoriesScreen() {
   const {
     categories,
     addCategory,
-    updateCategoryBudget,
     deleteCategory,
-    getCategorySpentThisMonth,
     resetToZero,
     exportBackupJson,
     importBackupJson,
@@ -45,13 +44,9 @@ export default function CategoriesScreen() {
   const [tabType, setTabType] = useState<'expense' | 'income'>('expense');
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState('');
-  const [newBudget, setNewBudget] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLOR_PALETTE[0]);
   const [selectedIcon, setSelectedIcon] = useState(GENERAL_ICONS[0].icon);
-
-  // Modal para editar el presupuesto mensual de cualquier categoría existente
-  const [editingBudgetCat, setEditingBudgetCat] = useState<Category | null>(null);
-  const [budgetAmountInput, setBudgetAmountInput] = useState('');
+  const [iconSearch, setIconSearch] = useState('');
 
   // Modal de Respaldo / Restauración y Host
   const [showBackupModal, setShowBackupModal] = useState(false);
@@ -60,26 +55,24 @@ export default function CategoriesScreen() {
 
   const filteredCategories = categories.filter((c) => c.type === tabType);
 
+  const filteredIcons = GENERAL_ICONS.filter(
+    (item) =>
+      !iconSearch.trim() ||
+      item.label.toLowerCase().includes(iconSearch.toLowerCase()) ||
+      item.group.toLowerCase().includes(iconSearch.toLowerCase())
+  );
+
   const handleSaveCategory = async () => {
     if (!name.trim()) return;
-    const parsedBudget = parseFloat(newBudget) || 0;
     await addCategory({
       name: name.trim(),
       type: tabType,
       color: selectedColor,
       icon: selectedIcon,
-      monthlyBudget: tabType === 'expense' ? parsedBudget : 0,
     });
     setName('');
-    setNewBudget('');
+    setIconSearch('');
     setShowModal(false);
-  };
-
-  const handleSaveEditedBudget = async () => {
-    if (!editingBudgetCat) return;
-    const parsed = parseFloat(budgetAmountInput) || 0;
-    await updateCategoryBudget(editingBudgetCat.id, parsed);
-    setEditingBudgetCat(null);
   };
 
   const handleShareBackup = async () => {
@@ -97,7 +90,7 @@ export default function CategoriesScreen() {
       setShowBackupModal(false);
       Alert.alert(
         'Respaldo Restaurado',
-        'Tus cuentas, movimientos y categorías fueron restaurados con éxito.'
+        'Tus cuentas, movimientos, préstamos, metas y categorías fueron restaurados con éxito.'
       );
     } catch {
       Alert.alert('Error', 'El texto JSON pegado no tiene un formato de respaldo válido.');
@@ -107,7 +100,7 @@ export default function CategoriesScreen() {
   const handleResetZero = () => {
     Alert.alert(
       'Empezar desde Cero ($0.00)',
-      '¿Seguro que deseas borrar todas las cuentas y movimientos de prueba para iniciar la app desde cero?',
+      '¿Seguro que deseas borrar todas las cuentas, préstamos, metas y movimientos de prueba para iniciar la app desde cero?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -125,9 +118,9 @@ export default function CategoriesScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Panel de Respaldo, Reinicio a Cero y Servidor Vercel */}
+        {/* Bloque 1 de Ajustes: Respaldo, Reinicio a Cero y Servidor Vercel */}
         <View style={styles.toolsCard}>
-          <Text style={styles.toolsTitle}>Respaldo, Reinicio a Cero y Servidor</Text>
+          <Text style={styles.toolsTitle}>Ajustes Generales y Respaldo de Datos</Text>
           <View style={styles.toolsButtonsRow}>
             <TouchableOpacity style={styles.toolBtnPrimary} onPress={handleShareBackup}>
               <Ionicons name="cloud-upload-outline" size={16} color="#0F172A" />
@@ -141,8 +134,8 @@ export default function CategoriesScreen() {
                 setShowBackupModal(true);
               }}
             >
-              <Ionicons name="settings-outline" size={16} color="#F8FAFC" />
-              <Text style={styles.toolBtnSecondaryText}>Restaurar / Host</Text>
+              <Ionicons name="server-outline" size={16} color="#F8FAFC" />
+              <Text style={styles.toolBtnSecondaryText}>Restaurar / Servidor</Text>
             </TouchableOpacity>
           </View>
 
@@ -154,7 +147,18 @@ export default function CategoriesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Pestañas Categorías de Gastos vs Categorías de Ingresos */}
+        {/* Bloque 2 de Ajustes: Gestión de Categorías (Separadas de Presupuestos) */}
+        <View style={styles.headerSpread}>
+          <Text style={styles.sectionTitle}>Categorías de la App</Text>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => setShowModal(true)}
+          >
+            <Ionicons name="add" size={18} color="#0F172A" />
+            <Text style={styles.addBtnText}>Agregar Categoría</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.segmentRow}>
           <TouchableOpacity
             style={[
@@ -163,7 +167,9 @@ export default function CategoriesScreen() {
             ]}
             onPress={() => setTabType('expense')}
           >
-            <Text style={styles.segmentText}>Gastos y Presupuestos</Text>
+            <Text style={styles.segmentText}>
+              Categorías de Gastos ({categories.filter((c) => c.type === 'expense').length})
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -173,160 +179,40 @@ export default function CategoriesScreen() {
             ]}
             onPress={() => setTabType('income')}
           >
-            <Text style={styles.segmentText}>Categorías de Ingresos</Text>
+            <Text style={styles.segmentText}>
+              Categorías de Ingresos ({categories.filter((c) => c.type === 'income').length})
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.headerSpread}>
-          <Text style={styles.sectionTitle}>
-            {tabType === 'expense' ? 'Categorías y Presupuestos del Mes' : 'Ingresos'} ({filteredCategories.length})
-          </Text>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => setShowModal(true)}
-          >
-            <Ionicons name="add" size={18} color="#0F172A" />
-            <Text style={styles.addBtnText}>Nueva</Text>
-          </TouchableOpacity>
-        </View>
-
-        {tabType === 'expense' && (
-          <Text style={styles.helperText}>
-            Toca "Presupuesto Mensual" en cualquier categoría (ej. Comida = $200) para fijar tu meta del mes. Si te pasas no bloquea nada, solo te muestra el exceso para tu control.
-          </Text>
-        )}
-
-        {filteredCategories.map((cat) => {
-          const spentThisMonth = tabType === 'expense' ? getCategorySpentThisMonth(cat.id) : 0;
-          const budget = cat.monthlyBudget || 0;
-          const isOverBudget = budget > 0 && spentThisMonth > budget;
-          const pct = budget > 0 ? (spentThisMonth / budget) * 100 : 0;
-
-          return (
-            <View key={cat.id} style={styles.catCard}>
-              <View style={styles.catTopRow}>
-                <View style={{ marginRight: 12 }}>
-                  <SmartIcon iconName={cat.icon} color={cat.color} />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.catName}>{cat.name}</Text>
-                  <Text style={styles.catSub}>
-                    {tabType === 'expense'
-                      ? `Gastado este mes: $${spentThisMonth.toFixed(2)}`
-                      : cat.isCustom
-                      ? 'Categoría personalizada'
-                      : 'Categoría predeterminada'}
-                  </Text>
-                </View>
-
-                {tabType === 'expense' && (
-                  <TouchableOpacity
-                    style={[
-                      styles.budgetEditBtn,
-                      budget > 0 && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
-                    ]}
-                    onPress={() => {
-                      setEditingBudgetCat(cat);
-                      setBudgetAmountInput(budget > 0 ? String(budget) : '');
-                    }}
-                  >
-                    <Ionicons name="speedometer-outline" size={14} color="#E0F2FE" />
-                    <Text style={styles.budgetEditBtnText}>
-                      {budget > 0 ? `Meta: $${budget.toFixed(0)}/mes` : '+ Presupuesto'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {cat.isCustom && (
-                  <TouchableOpacity
-                    style={{ marginLeft: 8 }}
-                    onPress={() => deleteCategory(cat.id)}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  </TouchableOpacity>
-                )}
+        {filteredCategories.map((cat) => (
+          <View key={cat.id} style={styles.catCard}>
+            <View style={styles.catTopRow}>
+              <View style={{ marginRight: 12 }}>
+                <SmartIcon iconName={cat.icon} color={cat.color} />
               </View>
 
-              {/* Barra de Presupuesto Mensual si tiene presupuesto asignado */}
-              {tabType === 'expense' && budget > 0 && (
-                <View style={styles.budgetProgressBox}>
-                  <View style={styles.budgetRowLabels}>
-                    <Text style={styles.budgetProgressLabel}>
-                      ${spentThisMonth.toFixed(2)} de ${budget.toFixed(2)} ({pct.toFixed(0)}%)
-                    </Text>
-                    <Text
-                      style={[
-                        styles.budgetStatusText,
-                        { color: isOverBudget ? '#F87171' : '#4ADE80' },
-                      ]}
-                    >
-                      {isOverBudget
-                        ? `Sobrepasado por $${(spentThisMonth - budget).toFixed(2)} (Sin bloqueo)`
-                        : `Disponibles: $${(budget - spentThisMonth).toFixed(2)}`}
-                    </Text>
-                  </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.catName}>{cat.name}</Text>
+                <Text style={styles.catSub}>
+                  {cat.isCustom ? 'Categoría personalizada' : 'Categoría base de la app'}
+                </Text>
+              </View>
 
-                  <View style={styles.progressTrack}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          width: `${Math.min(pct, 100)}%`,
-                          backgroundColor: isOverBudget
-                            ? '#EF4444'
-                            : pct > 80
-                            ? '#F59E0B'
-                            : '#22C55E',
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
+              {cat.isCustom && (
+                <TouchableOpacity
+                  style={{ marginLeft: 8 }}
+                  onPress={() => deleteCategory(cat.id)}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </TouchableOpacity>
               )}
             </View>
-          );
-        })}
+          </View>
+        ))}
       </ScrollView>
 
-      {/* Modal para Editar el Presupuesto Mensual de una Categoría */}
-      <Modal visible={Boolean(editingBudgetCat)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              Presupuesto Mensual: {editingBudgetCat?.name}
-            </Text>
-            <Text style={styles.helperText}>
-              Define cuánto quieres gastar como máximo al mes en esta categoría (ej. 200). Si pones 0 se desactiva el límite. Si te pasas del monto, tus gastos seguirán registrándose normalmente.
-            </Text>
-
-            <Text style={styles.inputLabel}>Presupuesto Mensual ($ USD)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. 200.00 (o 0 para quitar)"
-              placeholderTextColor="#64748B"
-              keyboardType="decimal-pad"
-              value={budgetAmountInput}
-              onChangeText={setBudgetAmountInput}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setEditingBudgetCat(null)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEditedBudget}>
-                <Text style={styles.saveBtnText}>Guardar Presupuesto</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal para Crear Nueva Categoría + Presupuesto Opcional */}
+      {/* Modal para Crear Nueva Categoría con 65+ Íconos y Buscador */}
       <Modal visible={showModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -343,23 +229,7 @@ export default function CategoriesScreen() {
               onChangeText={setName}
             />
 
-            {tabType === 'expense' && (
-              <>
-                <Text style={styles.inputLabel}>
-                  Presupuesto Mensual Opcional ($ USD — Deja vacío si no quieres límite)
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ej. 200.00"
-                  placeholderTextColor="#64748B"
-                  keyboardType="decimal-pad"
-                  value={newBudget}
-                  onChangeText={setNewBudget}
-                />
-              </>
-            )}
-
-            <Text style={styles.inputLabel}>Color para la Gráfica</Text>
+            <Text style={styles.inputLabel}>Color</Text>
             <View style={styles.paletteRow}>
               {COLOR_PALETTE.map((color) => (
                 <TouchableOpacity
@@ -374,9 +244,19 @@ export default function CategoriesScreen() {
               ))}
             </View>
 
-            <Text style={styles.inputLabel}>Ícono (Incluye Netflix, Steam, Spotify, PS, Xbox...)</Text>
-            <ScrollView style={{ maxHeight: 140 }} contentContainerStyle={styles.iconGrid}>
-              {GENERAL_ICONS.map((item) => (
+            <Text style={styles.inputLabel}>
+              Buscar Ícono ({filteredIcons.length} disponibles: Netflix, Steam, Walmart, Zelle, Gym...)
+            </Text>
+            <TextInput
+              style={[styles.input, { marginBottom: 8, paddingVertical: 8 }]}
+              placeholder="Filtrar ícono (ej. juego, comida, auto, banco...)"
+              placeholderTextColor="#64748B"
+              value={iconSearch}
+              onChangeText={setIconSearch}
+            />
+
+            <ScrollView style={{ maxHeight: 180 }} contentContainerStyle={styles.iconGrid}>
+              {filteredIcons.map((item) => (
                 <TouchableOpacity
                   key={item.icon}
                   style={[
@@ -399,7 +279,7 @@ export default function CategoriesScreen() {
               ))}
             </ScrollView>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
               <TouchableOpacity
                 style={styles.cancelBtn}
                 onPress={() => setShowModal(false)}
@@ -446,7 +326,7 @@ export default function CategoriesScreen() {
             </Text>
             <TextInput
               style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
-              placeholder='{"version": 1, "accounts": [...]}'
+              placeholder='{"version": 2, "accounts": [...]}'
               placeholderTextColor="#64748B"
               multiline
               value={backupJsonInput}
@@ -481,7 +361,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: '#1E293B',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   toolsTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700', marginBottom: 10 },
   toolsButtonsRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
@@ -533,20 +413,14 @@ const styles = StyleSheet.create({
   },
   segmentExpenseActive: { backgroundColor: '#EF4444', borderColor: '#EF4444' },
   segmentIncomeActive: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
-  segmentText: { color: '#F8FAFC', fontWeight: '700', fontSize: 13 },
+  segmentText: { color: '#F8FAFC', fontWeight: '700', fontSize: 12 },
   headerSpread: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  sectionTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700' },
-  helperText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    lineHeight: 17,
     marginBottom: 12,
   },
+  sectionTitle: { color: '#F8FAFC', fontSize: 17, fontWeight: '700' },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -571,41 +445,6 @@ const styles = StyleSheet.create({
   },
   catName: { color: '#F8FAFC', fontSize: 15, fontWeight: '700' },
   catSub: { color: '#64748B', fontSize: 12, marginTop: 2 },
-  budgetEditBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#334155',
-    backgroundColor: '#1E293B',
-  },
-  budgetEditBtnText: { color: '#E0F2FE', fontSize: 11, fontWeight: '700' },
-  budgetProgressBox: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#1E293B',
-  },
-  budgetRowLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  budgetProgressLabel: { color: '#CBD5E1', fontSize: 11, fontWeight: '600' },
-  budgetStatusText: { fontSize: 11, fontWeight: '700' },
-  progressTrack: {
-    height: 7,
-    backgroundColor: '#1E293B',
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.85)',
@@ -620,7 +459,7 @@ const styles = StyleSheet.create({
     borderColor: '#1E293B',
   },
   modalTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: '800', marginBottom: 10 },
-  inputLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginTop: 10, marginBottom: 6 },
+  inputLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginTop: 8, marginBottom: 4 },
   input: {
     backgroundColor: '#1E293B',
     color: '#F8FAFC',
@@ -636,9 +475,9 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   colorCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   colorCircleSelected: {
     borderWidth: 3,
