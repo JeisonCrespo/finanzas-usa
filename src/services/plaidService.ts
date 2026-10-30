@@ -3,6 +3,10 @@ import { AccountType, BankAccount, Transaction } from '../types/finance';
 // URL oficial de tu servidor desplegado en Vercel
 export const PLAID_BACKEND_URL = 'https://finanzas-usa-puce.vercel.app/api';
 
+// Llaves oficiales de Plaid preconfiguradas para tu app
+export const DEFAULT_PLAID_CLIENT_ID = '6ae40f2e5fba34000d7ce0ad';
+export const DEFAULT_PLAID_SECRET = '0b77eb6c08bff757e3b7244111f670';
+
 export interface PlaidSyncResponse {
   accounts: BankAccount[];
   transactions: Omit<Transaction, 'id'>[];
@@ -10,6 +14,7 @@ export interface PlaidSyncResponse {
 
 export interface USBankTemplate {
   id: string;
+  plaidInstitutionId: string;
   institution: string;
   shortName: string;
   color: string;
@@ -21,11 +26,11 @@ export interface USBankTemplate {
 
 /**
  * Catálogo directo de los principales bancos de EE. UU. (Encabezado por Wells Fargo, Chase y Truist)
- * Permite agregar tu cuenta real con tu propio saldo inicial, últimos 4 dígitos y tipo sin depender de llaves API externas.
  */
 export const US_MAJOR_BANKS: USBankTemplate[] = [
   {
     id: 'wells_fargo',
+    plaidInstitutionId: 'ins_127991',
     institution: 'Wells Fargo',
     shortName: 'Wells Fargo',
     color: '#D97706',
@@ -36,6 +41,7 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
   },
   {
     id: 'chase',
+    plaidInstitutionId: 'ins_56',
     institution: 'JPMorgan Chase',
     shortName: 'Chase',
     color: '#1D4ED8',
@@ -46,6 +52,7 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
   },
   {
     id: 'truist',
+    plaidInstitutionId: 'ins_109508',
     institution: 'Truist Bank',
     shortName: 'Truist',
     color: '#7C3AED',
@@ -56,6 +63,7 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
   },
   {
     id: 'bofa',
+    plaidInstitutionId: 'ins_127989',
     institution: 'Bank of America',
     shortName: 'Bank of America',
     color: '#DC2626',
@@ -66,6 +74,7 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
   },
   {
     id: 'capital_one',
+    plaidInstitutionId: 'ins_128026',
     institution: 'Capital One',
     shortName: 'Capital One',
     color: '#0284C7',
@@ -76,6 +85,7 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
   },
   {
     id: 'citi',
+    plaidInstitutionId: 'ins_127990',
     institution: 'Citibank',
     shortName: 'Citibank',
     color: '#0369A1',
@@ -86,6 +96,7 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
   },
   {
     id: 'amex',
+    plaidInstitutionId: 'ins_10',
     institution: 'American Express',
     shortName: 'Amex',
     color: '#CA8A04',
@@ -96,6 +107,7 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
   },
   {
     id: 'us_bank',
+    plaidInstitutionId: 'ins_109511',
     institution: 'U.S. Bank / PNC',
     shortName: 'U.S. Bank',
     color: '#2563EB',
@@ -105,6 +117,34 @@ export const US_MAJOR_BANKS: USBankTemplate[] = [
     defaultMask: '2290',
   },
 ];
+
+/**
+ * Conecta directamente una institución bancaria (Wells Fargo, Chase, Truist...) usando tus llaves en la API real de Plaid
+ */
+export async function connectPlaidInstitutionLive(
+  bank: USBankTemplate,
+  customBaseUrl = PLAID_BACKEND_URL,
+  plaidClientId = DEFAULT_PLAID_CLIENT_ID,
+  plaidSecret = DEFAULT_PLAID_SECRET
+): Promise<{ item_id: string; accounts: BankAccount[] }> {
+  const response = await fetch(`${customBaseUrl}/connect_plaid_institution`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      institutionId: bank.plaidInstitutionId,
+      institutionName: bank.institution,
+      color: bank.color,
+      plaidClientId: plaidClientId || DEFAULT_PLAID_CLIENT_ID,
+      plaidSecret: plaidSecret || DEFAULT_PLAID_SECRET,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al conectar institución con Plaid API');
+  }
+
+  return response.json();
+}
 
 /**
  * Solicita un link_token al backend en Vercel para abrir el modal nativo de Plaid Link en Android

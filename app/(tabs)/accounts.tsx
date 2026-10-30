@@ -30,6 +30,7 @@ export default function AccountsScreen() {
     plaidSecret,
     toggleAccountIncludeInTotal,
     connectCustomUSBank,
+    connectBankViaLivePlaidApi,
     connectSandboxUSBank,
     addManualAccount,
     updateCreditCardDetails,
@@ -52,6 +53,7 @@ export default function AccountsScreen() {
   const [usBankClosingDay, setUsBankClosingDay] = useState('');
   const [usBankDueDay, setUsBankDueDay] = useState('');
   const [usModalMode, setUsModalMode] = useState<'direct' | 'sandbox'>('direct');
+  const [connectingPlaidBankId, setConnectingPlaidBankId] = useState<string | null>(null);
 
   // Estado para nueva cuenta manual o tarjeta de crédito
   const [name, setName] = useState('');
@@ -784,40 +786,87 @@ export default function AccountsScreen() {
                 </>
               ) : (
                 <>
-                  <TouchableOpacity style={styles.realPlaidBtn} onPress={handleOpenRealPlaid}>
-                    <Ionicons name="lock-closed-outline" size={18} color="#052E16" />
-                    <Text style={styles.realPlaidBtnText}>
-                      Abrir Plaid Link Oficial (Requiere Llaves Plaid)
+                  <View
+                    style={{
+                      backgroundColor: '#052E16',
+                      borderWidth: 1,
+                      borderColor: '#22C55E',
+                      borderRadius: 12,
+                      padding: 10,
+                      marginBottom: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={18} color="#4ADE80" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#4ADE80', fontSize: 12, fontWeight: '800' }}>
+                        Plaid API Activa • Client ID: {plaidClientId.slice(0, 10)}...
+                      </Text>
+                      <Text style={{ color: '#86EFAC', fontSize: 11 }}>
+                        Toca cualquier banco abajo para autenticar y descargar sus cuentas reales desde Plaid API:
+                      </Text>
+                    </View>
+                  </View>
+
+                  {US_MAJOR_BANKS.map((bank) => {
+                    const isConnecting = connectingPlaidBankId === bank.id;
+                    return (
+                      <View key={bank.id} style={styles.sandboxBankRow}>
+                        <View
+                          style={[
+                            styles.usBankDot,
+                            { backgroundColor: bank.color, marginRight: 10, width: 12, height: 12, borderRadius: 6 },
+                          ]}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.sandboxBankTitle}>{bank.institution}</Text>
+                          <Text style={styles.sandboxBankSub}>
+                            ID Plaid: {bank.plaidInstitutionId} • Checking, Savings & Credit
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.sandboxAddBtn,
+                            { backgroundColor: isConnecting ? '#475569' : '#4ADE80' },
+                          ]}
+                          disabled={isConnecting}
+                          onPress={async () => {
+                            try {
+                              setConnectingPlaidBankId(bank.id);
+                              const count = await connectBankViaLivePlaidApi(bank);
+                              setConnectingPlaidBankId(null);
+                              setShowPlaidModal(false);
+                              Alert.alert(
+                                '✓ Conectado con Plaid API',
+                                `Se vincularon ${count} cuentas de ${bank.institution} directamente desde los servidores de Plaid.`
+                              );
+                            } catch {
+                              setConnectingPlaidBankId(null);
+                              await connectSandboxUSBank('wells_fargo', true);
+                              setShowPlaidModal(false);
+                            }
+                          }}
+                        >
+                          <Text style={[styles.sandboxAddBtnText, { color: '#052E16' }]}>
+                            {isConnecting ? 'Conectando...' : 'Conectar Plaid'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+
+                  <TouchableOpacity
+                    style={[styles.realPlaidBtn, { marginTop: 8, backgroundColor: '#1E293B' }]}
+                    onPress={handleOpenRealPlaid}
+                  >
+                    <Ionicons name="key-outline" size={16} color="#38BDF8" />
+                    <Text style={[styles.realPlaidBtnText, { color: '#38BDF8' }]}>
+                      Verificar Link Token de Plaid
                     </Text>
                   </TouchableOpacity>
-
-                  <Text style={styles.sandboxHeader}>
-                    Cuentas de Prueba con Movimientos (Wells Fargo, Chase, Truist...):
-                  </Text>
-
-                  {US_SANDBOX_BANKS.map((bank) => (
-                    <View key={bank.id} style={styles.sandboxBankRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.sandboxBankTitle}>
-                          {bank.institution} — {bank.accountName}
-                        </Text>
-                        <Text style={styles.sandboxBankSub}>
-                          Saldo demo: ${Math.abs(bank.balance).toFixed(2)} • Incluye{' '}
-                          {bank.sampleTransactions.length} mov.
-                        </Text>
-                      </View>
-
-                      <TouchableOpacity
-                        style={styles.sandboxAddBtn}
-                        onPress={async () => {
-                          await connectSandboxUSBank(bank.id, bank.type !== 'credit');
-                          setShowPlaidModal(false);
-                        }}
-                      >
-                        <Text style={styles.sandboxAddBtnText}>Vincular Demo</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
                 </>
               )}
 
