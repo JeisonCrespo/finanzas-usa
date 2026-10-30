@@ -11,8 +11,11 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { useFinance } from '../../src/context/FinanceContext';
 import { GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
+import { sendTestNotificationNow } from '../../src/services/notificationService';
 
 const COLOR_PALETTE = [
   '#E50914',
@@ -31,6 +34,9 @@ const COLOR_PALETTE = [
 
 export default function SettingsAndCategoriesScreen() {
   const {
+    accounts,
+    transactions,
+    recurringItems,
     categories,
     addCategory,
     deleteCategory,
@@ -39,6 +45,11 @@ export default function SettingsAndCategoriesScreen() {
     importBackupJson,
     backendUrl,
     setBackendUrl,
+    plaidClientId,
+    plaidSecret,
+    setPlaidCredentials,
+    lastDriveBackupAt,
+    recordDriveBackupTimestamp,
   } = useFinance();
 
   const [tabType, setTabType] = useState<'expense' | 'income'>('expense');
@@ -52,6 +63,8 @@ export default function SettingsAndCategoriesScreen() {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupJsonInput, setBackupJsonInput] = useState('');
   const [customHostInput, setCustomHostInput] = useState(backendUrl);
+  const [clientIdInput, setClientIdInput] = useState(plaidClientId);
+  const [secretInput, setSecretInput] = useState(plaidSecret);
 
   const filteredCategories = categories.filter((c) => c.type === tabType);
 
@@ -75,12 +88,45 @@ export default function SettingsAndCategoriesScreen() {
     setShowModal(false);
   };
 
-  const handleShareBackup = async () => {
-    const json = exportBackupJson();
-    await Share.share({
-      title: 'Respaldo Finanzas USA',
-      message: json,
-    });
+  /**
+   * Genera un archivo real .json y abre el menú nativo de Android para guardarlo directo en Google Drive
+   */
+  const handleBackupToGoogleDrive = async () => {
+    try {
+      const json = exportBackupJson();
+      const today = new Date().toISOString().split('T')[0];
+      const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+
+      if (baseDir) {
+        const fileUri = `${baseDir}finanzas-usa-backup-${today}.json`;
+        await FileSystem.writeAsStringAsync(fileUri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await recordDriveBackupTimestamp();
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/json',
+            dialogTitle: 'Guardar Respaldo en Google Drive',
+            UTI: 'public.json',
+          });
+          return;
+        }
+      }
+
+      // Fallback en caso de que el dispositivo no soporte compartir archivo directo
+      await recordDriveBackupTimestamp();
+      await Share.share({
+        title: `finanzas-usa-backup-${today}.json`,
+        message: json,
+      });
+    } catch {
+      Alert.alert(
+        'Error al crear archivo',
+        'No se pudo preparar el archivo de respaldo para Google Drive.'
+      );
+    }
   };
 
   const handleRestoreBackup = async () => {
@@ -90,7 +136,7 @@ export default function SettingsAndCategoriesScreen() {
       setShowBackupModal(false);
       Alert.alert(
         'Respaldo Restaurado',
-        'Tus cuentas, movimientos, préstamos, metas y categorías fueron restaurados con éxito.'
+        'Tus cuentas (Wells Fargo, Chase, Truist...), movimientos, préstamos, metas y categorías fueron restaurados con éxito.'
       );
     } catch {
       Alert.alert('Error', 'El texto JSON pegado no tiene un formato de respaldo válido.');
@@ -118,33 +164,81 @@ export default function SettingsAndCategoriesScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Bloque 1 de Ajustes: Respaldo, Reinicio a Cero y Servidor Vercel */}
+        {/* Bloque 1: Respaldo con Google Drive y Restauración */}
         <View style={styles.toolsCard}>
-          <Text style={styles.toolsTitle}>Ajustes Generales y Respaldo de Datos</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Ionicons name="logo-google" size={18} color="#4ADE80" />
+            <Text style={styles.toolsTitle}>Respaldo en Google Drive y Datos</Text>
+          </View>
+          <Text style={styles.driveHelperText}>
+            Guarda una copia completa de tus cuentas, préstamos, presupuestos y movimientos como archivo{' '}
+            <Text style={{ color: '#38BDF8', fontWeight: '700' }}>.json</Text> directamente en tu{' '}
+            <Text style={{ color: '#4ADE80', fontWeight: '700' }}>Google Drive</Text>.
+          </Text>
+
+          {lastDriveBackupAt && (
+            <Text style={styles.lastBackupText}>
+              ✓ Último respaldo generado: {new Date(lastDriveBackupAt).toLocaleString()}
+            </Text>
+          )}
+
           <View style={styles.toolsButtonsRow}>
-            <TouchableOpacity style={styles.toolBtnPrimary} onPress={handleShareBackup}>
-              <Ionicons name="cloud-upload-outline" size={16} color="#0F172A" />
-              <Text style={styles.toolBtnPrimaryText}>Exportar Respaldo</Text>
+            <TouchableOpacity
+              style={[styles.toolBtnPrimary, { backgroundColor: '#22C55E' }]}
+              onPress={handleBackupToGoogleDrive}
+            >
+              <Ionicons name="cloud-upload-outline" size={16} color="#052E16" />
+              <Text style={[styles.toolBtnPrimaryText, { color: '#052E16' }]}>
+                Guardar en Google Drive
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.toolBtnSecondary}
               onPress={() => {
                 setCustomHostInput(backendUrl);
+                setClientIdInput(plaidClientId);
+                setSecretInput(plaidSecret);
                 setShowBackupModal(true);
               }}
             >
-              <Ionicons name="server-outline" size={16} color="#F8FAFC" />
+              <Ionicons name="cloud-download-outline" size={16} color="#F8FAFC" />
               <Text style={styles.toolBtnSecondaryText}>Restaurar / Servidor</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.resetDangerBtn} onPress={handleResetZero}>
-            <Ionicons name="trash-bin-outline" size={16} color="#FCA5A5" />
-            <Text style={styles.resetDangerText}>
-              Borrar datos de prueba y empezar desde 0 ($0.00)
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.toolBtnSecondary, { flex: 1 }]}
+              onPress={async () => {
+                const ok = await sendTestNotificationNow();
+                if (ok) {
+                  Alert.alert(
+                    '🔔 Notificación Programada',
+                    'En 2 segundos sonará la notificación de prueba en tu Android.'
+                  );
+                } else {
+                  Alert.alert(
+                    'Permiso Requerido',
+                    'Activa los permisos de notificación para Finanzas USA en los ajustes de Android.'
+                  );
+                }
+              }}
+            >
+              <Ionicons name="notifications-outline" size={15} color="#38BDF8" />
+              <Text style={[styles.toolBtnSecondaryText, { color: '#38BDF8' }]}>
+                Probar Notificación Android
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.resetDangerBtn, { flex: 1 }]}
+              onPress={handleResetZero}
+            >
+              <Ionicons name="trash-bin-outline" size={15} color="#FCA5A5" />
+              <Text style={styles.resetDangerText}>Reiniciar a $0.00</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Bloque 2 de Ajustes: Gestión de Categorías (Separadas de Presupuestos) */}
@@ -210,6 +304,51 @@ export default function SettingsAndCategoriesScreen() {
             </View>
           </View>
         ))}
+
+        {/* Bloque 3: Información de la App, Versión y Estado del Sistema */}
+        <View style={styles.versionCard}>
+          <View style={styles.versionHeader}>
+            <View style={styles.appLogoCircle}>
+              <Ionicons name="wallet" size={20} color="#0F172A" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.versionAppName}>Finanzas USA • Personal Finance</Text>
+              <Text style={styles.versionSub}>
+                Versión 1.2.0 (Build 3 • Expo SDK 58 • Android)
+              </Text>
+            </View>
+            <View style={styles.statusOnlineBadge}>
+              <Text style={styles.statusOnlineText}>ACTIVO</Text>
+            </View>
+          </View>
+
+          <View style={styles.versionDivider} />
+
+          <View style={styles.versionRow}>
+            <Text style={styles.versionLabel}>Bancos US Soportados:</Text>
+            <Text style={styles.versionValue}>Wells Fargo, Chase, Truist, BofA, Citi, Amex</Text>
+          </View>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionLabel}>Respaldo Cloud:</Text>
+            <Text style={styles.versionValue}>Google Drive (.json) + SQLite Local</Text>
+          </View>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionLabel}>Notificaciones Android:</Text>
+            <Text style={styles.versionValue}>Recordatorios 1 o 2 días antes (09:00 AM)</Text>
+          </View>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionLabel}>Estadísticas actuales:</Text>
+            <Text style={styles.versionValue}>
+              {accounts.length} cuentas • {transactions.length} mov. • {recurringItems.length} recurrentes
+            </Text>
+          </View>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionLabel}>Servidor Backend:</Text>
+            <Text style={styles.versionValue} numberOfLines={1}>
+              {backendUrl}
+            </Text>
+          </View>
+        </View>
       </ScrollView>
 
       {/* Modal para Crear Nueva Categoría con 65+ Íconos y Buscador */}
@@ -295,56 +434,84 @@ export default function SettingsAndCategoriesScreen() {
         </View>
       </Modal>
 
-      {/* Modal para Restaurar Respaldo JSON y Configurar URL del Host en Vercel */}
+      {/* Modal para Restaurar Respaldo de Google Drive / JSON y Configurar Servidor / Plaid */}
       <Modal visible={showBackupModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Servidor en Vercel y Restaurar Respaldo</Text>
+          <View style={[styles.modalCard, { maxHeight: '90%' }]}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>Restaurar Drive, Servidor y Llaves Plaid</Text>
 
-            <Text style={styles.inputLabel}>
-              URL de tu Servidor Backend en Vercel
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="https://finanzas-usa-puce.vercel.app/api"
-              placeholderTextColor="#64748B"
-              value={customHostInput}
-              onChangeText={setCustomHostInput}
-            />
-            <TouchableOpacity
-              style={[styles.saveBtn, { flex: 0, marginTop: 8, paddingVertical: 10 }]}
-              onPress={async () => {
-                await setBackendUrl(customHostInput);
-                Alert.alert('Guardado', 'URL del servidor actualizada.');
-              }}
-            >
-              <Text style={styles.saveBtnText}>Guardar URL del Host</Text>
-            </TouchableOpacity>
-
-            <Text style={[styles.inputLabel, { marginTop: 16 }]}>
-              Restaurar Respaldo (Pega aquí el JSON exportado)
-            </Text>
-            <TextInput
-              style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
-              placeholder='{"version": 2, "accounts": [...]}'
-              placeholderTextColor="#64748B"
-              multiline
-              value={backupJsonInput}
-              onChangeText={setBackupJsonInput}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <Text style={styles.inputLabel}>
+                Restaurar Respaldo desde Google Drive (Pega el contenido de tu archivo .json)
+              </Text>
+              <TextInput
+                style={[styles.input, { height: 85, textAlignVertical: 'top' }]}
+                placeholder='{"version": 2, "accounts": [...]}'
+                placeholderTextColor="#64748B"
+                multiline
+                value={backupJsonInput}
+                onChangeText={setBackupJsonInput}
+              />
               <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setShowBackupModal(false)}
+                style={[styles.saveBtn, { flex: 0, marginTop: 8, paddingVertical: 10, backgroundColor: '#22C55E' }]}
+                onPress={handleRestoreBackup}
               >
-                <Text style={styles.cancelBtnText}>Cerrar</Text>
+                <Text style={[styles.saveBtnText, { color: '#052E16' }]}>
+                  Restaurar Copia de Seguridad Ahora
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.saveBtn} onPress={handleRestoreBackup}>
-                <Text style={styles.saveBtnText}>Restaurar Datos</Text>
-              </TouchableOpacity>
-            </View>
+              <Text style={[styles.inputLabel, { marginTop: 16 }]}>
+                URL de tu Servidor Backend en Vercel
+              </Text>
+              <TextInput
+                style={styles.input}
+                placeholder="https://finanzas-usa-puce.vercel.app/api"
+                placeholderTextColor="#64748B"
+                value={customHostInput}
+                onChangeText={setCustomHostInput}
+              />
+
+              <Text style={styles.inputLabel}>
+                Llaves de Plaid Developer (Opcional si usas Plaid Link API)
+              </Text>
+              <TextInput
+                style={[styles.input, { marginBottom: 6 }]}
+                placeholder="PLAID_CLIENT_ID (opcional)"
+                placeholderTextColor="#64748B"
+                value={clientIdInput}
+                onChangeText={setClientIdInput}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="PLAID_SECRET (opcional)"
+                placeholderTextColor="#64748B"
+                secureTextEntry
+                value={secretInput}
+                onChangeText={setSecretInput}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => setShowBackupModal(false)}
+                >
+                  <Text style={styles.cancelBtnText}>Cerrar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.saveBtn}
+                  onPress={async () => {
+                    await setBackendUrl(customHostInput);
+                    await setPlaidCredentials(clientIdInput, secretInput);
+                    Alert.alert('Guardado', 'Configuración de servidor y llaves actualizada.');
+                    setShowBackupModal(false);
+                  }}
+                >
+                  <Text style={styles.saveBtnText}>Guardar Ajustes</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -363,7 +530,19 @@ const styles = StyleSheet.create({
     borderColor: '#1E293B',
     marginBottom: 20,
   },
-  toolsTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  toolsTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
+  driveHelperText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 8,
+  },
+  lastBackupText: {
+    color: '#4ADE80',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
   toolsButtonsRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   toolBtnPrimary: {
     flex: 1,
@@ -395,7 +574,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     backgroundColor: '#450A0A',
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#7F1D1D',
@@ -445,6 +624,51 @@ const styles = StyleSheet.create({
   },
   catName: { color: '#F8FAFC', fontSize: 15, fontWeight: '700' },
   catSub: { color: '#64748B', fontSize: 12, marginTop: 2 },
+  versionCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  versionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  appLogoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#38BDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  versionAppName: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
+  versionSub: { color: '#94A3B8', fontSize: 12, marginTop: 2 },
+  statusOnlineBadge: {
+    backgroundColor: '#14532D',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#22C55E',
+  },
+  statusOnlineText: { color: '#4ADE80', fontSize: 10, fontWeight: '800' },
+  versionDivider: {
+    height: 1,
+    backgroundColor: '#1E293B',
+    marginVertical: 12,
+  },
+  versionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    gap: 8,
+  },
+  versionLabel: { color: '#64748B', fontSize: 12, fontWeight: '600' },
+  versionValue: { color: '#CBD5E1', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'right' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.85)',

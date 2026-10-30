@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
 import { LoanDirection, RecurrenceFrequency } from '../../src/types/finance';
 import { BRAND_PRESETS, GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
+import { sendTestNotificationNow } from '../../src/services/notificationService';
 
 type ControlSubTab = 'recurring' | 'loans' | 'goals';
 
@@ -23,6 +25,7 @@ export default function ControlScreen() {
     loans,
     savingsGoals,
     addRecurringItem,
+    updateRecurringReminderDays,
     confirmRecurringItem,
     postponeRecurringItem,
     skipRecurringCycle,
@@ -44,6 +47,7 @@ export default function ControlScreen() {
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [frequency, setFrequency] = useState<RecurrenceFrequency>('monthly');
   const [nextDueDate, setNextDueDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState<number>(1);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
@@ -92,6 +96,7 @@ export default function ControlScreen() {
       accountId: selectedAccountId,
       frequency,
       nextDueDate,
+      reminderDaysBefore,
     });
     setShowAddRecModal(false);
   };
@@ -208,12 +213,46 @@ export default function ControlScreen() {
         {subTab === 'recurring' && (
           <>
             <View style={styles.infoBox}>
-              <Ionicons name="hand-left-outline" size={22} color="#38BDF8" />
+              <Ionicons name="notifications-outline" size={24} color="#38BDF8" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.infoTitle}>Control Manual Garantizado</Text>
-                <Text style={styles.infoDesc}>
-                  Ningún gasto o ingreso recurrente se descuenta ni se suma solo. Tú decides cuándo confirmarlo o posponerlo.
+                <Text style={styles.infoTitle}>
+                  Control Manual + Recordatorio en Android (1 o 2 días antes)
                 </Text>
+                <Text style={styles.infoDesc}>
+                  Ningún gasto se descuenta solo. Tu teléfono Android te enviará una notificación 1 o 2 días antes del vencimiento para que lo confirmes o pospongas.
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    marginTop: 8,
+                    alignSelf: 'flex-start',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: '#0369A1',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                  }}
+                  onPress={async () => {
+                    const ok = await sendTestNotificationNow();
+                    if (ok) {
+                      Alert.alert(
+                        '🔔 Notificación Enviada',
+                        'En 2 segundos verás el recordatorio de prueba en la barra superior de tu teléfono Android.'
+                      );
+                    } else {
+                      Alert.alert(
+                        'Permiso de Notificaciones',
+                        'Asegúrate de permitir las notificaciones de Finanzas USA / Expo Go en los ajustes de tu Android.'
+                      );
+                    }
+                  }}
+                >
+                  <Ionicons name="notifications" size={14} color="#F8FAFC" />
+                  <Text style={{ color: '#F8FAFC', fontSize: 11, fontWeight: '700' }}>
+                    Probar Notificación en Android Ahora
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -228,6 +267,7 @@ export default function ControlScreen() {
             {recurringItems.map((item) => {
               const acc = accounts.find((a) => a.id === item.accountId);
               const cat = categories.find((c) => c.id === item.categoryId);
+              const remDays = item.reminderDaysBefore ?? 1;
 
               return (
                 <View key={item.id} style={styles.card}>
@@ -241,11 +281,25 @@ export default function ControlScreen() {
                     </View>
 
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <Text style={styles.itemTitle}>{item.title}</Text>
                         <View style={styles.freqBadge}>
                           <Text style={styles.freqBadgeText}>{frequencyLabel[item.frequency]}</Text>
                         </View>
+                        <TouchableOpacity
+                          style={[
+                            styles.freqBadge,
+                            { backgroundColor: '#0C4A6E', borderWidth: 1, borderColor: '#0284C7' },
+                          ]}
+                          onPress={() => {
+                            const nextVal = remDays === 1 ? 2 : remDays === 2 ? 0 : 1;
+                            updateRecurringReminderDays(item.id, nextVal);
+                          }}
+                        >
+                          <Text style={[styles.freqBadgeText, { color: '#38BDF8' }]}>
+                            🔔 {remDays === 0 ? 'El mismo día' : `${remDays} ${remDays === 1 ? 'día' : 'días'} antes`}
+                          </Text>
+                        </TouchableOpacity>
                       </View>
 
                       <Text style={styles.itemSub}>
@@ -882,6 +936,31 @@ export default function ControlScreen() {
               value={nextDueDate}
               onChangeText={setNextDueDate}
             />
+
+            <Text style={styles.inputLabel}>🔔 Recordatorio en Android antes del vencimiento</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+              {[
+                { days: 1, label: '1 día antes' },
+                { days: 2, label: '2 días antes' },
+                { days: 3, label: '3 días antes' },
+                { days: 0, label: 'El mismo día' },
+              ].map((opt) => (
+                <TouchableOpacity
+                  key={opt.days}
+                  style={[
+                    styles.chip,
+                    { marginRight: 0, flex: 1, alignItems: 'center', paddingHorizontal: 6 },
+                    reminderDaysBefore === opt.days && {
+                      borderColor: '#38BDF8',
+                      backgroundColor: '#0C4A6E',
+                    },
+                  ]}
+                  onPress={() => setReminderDaysBefore(opt.days)}
+                >
+                  <Text style={[styles.chipText, { fontSize: 11 }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Text style={styles.inputLabel}>Frecuencia</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>

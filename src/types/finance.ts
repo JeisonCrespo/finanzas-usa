@@ -93,6 +93,7 @@ export interface RecurringItem {
   frequency: RecurrenceFrequency;
   nextDueDate: string;
   postponedUntil?: string;
+  reminderDaysBefore?: number; // 1 o 2 días antes (o 0 = el mismo día)
   active: boolean;
   notes?: string;
 }

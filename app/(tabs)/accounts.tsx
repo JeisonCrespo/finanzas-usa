@@ -13,7 +13,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
 import {
+  US_MAJOR_BANKS,
   US_SANDBOX_BANKS,
+  USBankTemplate,
   createPlaidLinkToken,
 } from '../../src/services/plaidService';
 import { AccountType, BankAccount } from '../../src/types/finance';
@@ -23,7 +25,11 @@ export default function AccountsScreen() {
     accounts,
     includedTotalBalance,
     excludedTotalBalance,
+    backendUrl,
+    plaidClientId,
+    plaidSecret,
     toggleAccountIncludeInTotal,
+    connectCustomUSBank,
     connectSandboxUSBank,
     addManualAccount,
     updateCreditCardDetails,
@@ -35,6 +41,18 @@ export default function AccountsScreen() {
   const [showManualModal, setShowManualModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
 
+  // Estado para conexión directa de Wells Fargo, Chase, Truist, etc.
+  const [selectedBankTemplate, setSelectedBankTemplate] = useState<USBankTemplate>(US_MAJOR_BANKS[0]);
+  const [usBankAccountType, setUsBankAccountType] = useState<AccountType>('checking');
+  const [usBankCustomName, setUsBankCustomName] = useState(US_MAJOR_BANKS[0].defaultCheckingName);
+  const [usBankBalance, setUsBankBalance] = useState('');
+  const [usBankMask, setUsBankMask] = useState('');
+  const [usBankIncludeTotal, setUsBankIncludeTotal] = useState(true);
+  const [usBankCreditLimit, setUsBankCreditLimit] = useState('');
+  const [usBankClosingDay, setUsBankClosingDay] = useState('');
+  const [usBankDueDay, setUsBankDueDay] = useState('');
+  const [usModalMode, setUsModalMode] = useState<'direct' | 'sandbox'>('direct');
+
   // Estado para nueva cuenta manual o tarjeta de crédito
   const [name, setName] = useState('');
   const [institution, setInstitution] = useState('');
@@ -45,7 +63,7 @@ export default function AccountsScreen() {
   const [closingDay, setClosingDay] = useState('');
   const [dueDay, setDueDay] = useState('');
 
-  // Modal para editar fechas de corte/pago y límite de una tarjeta existente (#3)
+  // Modal para editar fechas de corte/pago y límite de una tarjeta existente
   const [editingCard, setEditingCard] = useState<BankAccount | null>(null);
   const [editLimit, setEditLimit] = useState('');
   const [editClosing, setEditClosing] = useState('');
@@ -58,17 +76,64 @@ export default function AccountsScreen() {
   const [transferFee, setTransferFee] = useState('');
   const [transferNote, setTransferNote] = useState('');
 
+  const handleSelectUSBankTemplate = (bank: USBankTemplate, typeOverride?: AccountType) => {
+    const targetType = typeOverride || usBankAccountType;
+    setSelectedBankTemplate(bank);
+    setUsBankAccountType(targetType);
+    if (targetType === 'checking') {
+      setUsBankCustomName(bank.defaultCheckingName);
+      setUsBankIncludeTotal(true);
+    } else if (targetType === 'savings') {
+      setUsBankCustomName(bank.defaultSavingsName);
+      setUsBankIncludeTotal(true);
+    } else {
+      setUsBankCustomName(bank.defaultCreditName);
+      setUsBankIncludeTotal(false);
+    }
+  };
+
+  const handleConnectDirectUSBank = async () => {
+    const parsedBal = parseFloat(usBankBalance) || 0;
+    const finalName = usBankCustomName.trim() || selectedBankTemplate.defaultCheckingName;
+
+    await connectCustomUSBank({
+      name: finalName,
+      institution: selectedBankTemplate.institution,
+      mask: usBankMask.trim() || selectedBankTemplate.defaultMask,
+      type: usBankAccountType,
+      balance: parsedBal,
+      currency: 'USD',
+      includeInTotal: usBankAccountType === 'credit' ? false : usBankIncludeTotal,
+      color: selectedBankTemplate.color,
+      creditLimit: usBankAccountType === 'credit' ? parseFloat(usBankCreditLimit) || 0 : 0,
+      closingDay: usBankAccountType === 'credit' ? parseInt(usBankClosingDay, 10) || 0 : 0,
+      dueDay: usBankAccountType === 'credit' ? parseInt(usBankDueDay, 10) || 0 : 0,
+    });
+
+    setUsBankBalance('');
+    setUsBankMask('');
+    setUsBankCreditLimit('');
+    setUsBankClosingDay('');
+    setUsBankDueDay('');
+    setShowPlaidModal(false);
+  };
+
   const handleOpenRealPlaid = async () => {
     try {
-      const linkToken = await createPlaidLinkToken();
+      const linkToken = await createPlaidLinkToken(
+        'user-android-1',
+        backendUrl,
+        plaidClientId,
+        plaidSecret
+      );
       Alert.alert(
         'Plaid Link Token Generado',
-        `Token listo (${linkToken.slice(0, 18)}...). En un APK Android compilado con tus llaves de Plaid se abre la ventana del banco.`
+        `Token oficial recibido (${linkToken.slice(0, 20)}...). Tu servidor en Vercel y llaves de Plaid están conectadas correctamente.`
       );
     } catch {
       Alert.alert(
-        'Modo Sandbox Local',
-        'Aún no has agregado tu PLAID_SECRET en Vercel. Puedes vincular al instante cualquiera de los bancos de EE. UU. del simulador abajo.'
+        'Conexión Directa Disponible',
+        'Plaid automático requiere llaves de desarrollador (PLAID_CLIENT_ID y PLAID_SECRET en Ajustes o en Vercel). ¡No te preocupes! Selecciona arriba Wells Fargo, Chase o Truist en "Mi Cuenta Real" para agregar tus cuentas ahora mismo sin llaves.'
       );
     }
   };
@@ -170,10 +235,13 @@ export default function AccountsScreen() {
         <View style={styles.topButtonsRow}>
           <TouchableOpacity
             style={styles.plaidConnectBtn}
-            onPress={() => setShowPlaidModal(true)}
+            onPress={() => {
+              handleSelectUSBankTemplate(US_MAJOR_BANKS[0], 'checking');
+              setShowPlaidModal(true);
+            }}
           >
-            <Ionicons name="link-outline" size={18} color="#0F172A" />
-            <Text style={styles.plaidConnectBtnText}>Banco US (Plaid)</Text>
+            <Ionicons name="business-outline" size={18} color="#0F172A" />
+            <Text style={styles.plaidConnectBtnText}>Agregar Banco US</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -193,10 +261,10 @@ export default function AccountsScreen() {
         </View>
 
         <Text style={styles.helperNote}>
-          Elige qué cuentas se suman a tu Saldo Total. En tus Tarjetas de Crédito puedes controlar tu Fecha de Corte, Fecha de Pago y % de Utilización (ideal bajo 30% en EE. UU.).
+          Conecta tus cuentas de Wells Fargo, Chase, Truist o cualquier banco de EE. UU. Elige cuáles se suman a tu Saldo Total y controla el % de utilización de tus tarjetas de crédito.
         </Text>
 
-        {/* Lista de Cuentas y Tarjetas de Crédito (#3) */}
+        {/* Lista de Cuentas y Tarjetas de Crédito */}
         {accounts.map((acc) => {
           const isCredit = acc.type === 'credit';
           const limit = acc.creditLimit || 0;
@@ -227,12 +295,17 @@ export default function AccountsScreen() {
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Text style={styles.accountName}>{acc.name}</Text>
                     {acc.mask && <Text style={styles.accountMask}>•••• {acc.mask}</Text>}
                   </View>
                   <Text style={styles.accountInstitution}>
-                    {acc.institution} • {isCredit ? 'Tarjeta de Crédito US' : 'Cuenta Bancaria'}
+                    {acc.institution} •{' '}
+                    {isCredit
+                      ? 'Tarjeta de Crédito US'
+                      : acc.type === 'savings'
+                      ? 'Savings / Ahorros'
+                      : 'Checking / Corriente'}
                   </Text>
                 </View>
 
@@ -485,7 +558,7 @@ export default function AccountsScreen() {
             <Text style={styles.inputLabel}>Concepto / Nota (Opcional)</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Pago de tarjeta BofA, Ahorro mensual..."
+              placeholder="Ej. Pago de tarjeta Chase, Zelle a Truist..."
               placeholderTextColor="#64748B"
               value={transferNote}
               onChangeText={setTransferNote}
@@ -510,62 +583,260 @@ export default function AccountsScreen() {
         </View>
       </Modal>
 
-      {/* Modal de Conexión Plaid US */}
+      {/* Modal de Conexión Bancaria US (Wells Fargo, Chase, Truist, etc.) */}
       <Modal visible={showPlaidModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Conectar Banco en Estados Unidos</Text>
-            <Text style={styles.modalSub}>
-              Vincula cuentas de Chase, Bank of America, Wells Fargo, Capital One, Citi o American Express mediante Plaid.
-            </Text>
+          <View style={[styles.modalCard, { maxHeight: '92%' }]}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>Agregar Banco de Estados Unidos</Text>
+              <Text style={styles.modalSub}>
+                Elige tu banco (Wells Fargo, Chase, Truist, BofA, Capital One, Citi o Amex) y agrega tu cuenta real al instante.
+              </Text>
 
-            <TouchableOpacity style={styles.realPlaidBtn} onPress={handleOpenRealPlaid}>
-              <Ionicons name="lock-closed-outline" size={18} color="#0F172A" />
-              <Text style={styles.realPlaidBtnText}>Abrir Plaid Link Oficial (API Real)</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.sandboxHeader}>
-              O prueba ahora mismo con un Banco Sandbox de EE. UU.:
-            </Text>
-
-            {US_SANDBOX_BANKS.map((bank) => (
-              <View key={bank.id} style={styles.sandboxBankRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sandboxBankTitle}>
-                    {bank.institution} — {bank.accountName}
-                  </Text>
-                  <Text style={styles.sandboxBankSub}>
-                    Saldo: ${Math.abs(bank.balance).toFixed(2)} • Incluye {bank.sampleTransactions.length} movimientos
-                  </Text>
-                </View>
+              {/* Selector de modo: Mi Cuenta Real vs Demo Sandbox / Plaid API */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.typeSelectBtn,
+                    usModalMode === 'direct' && styles.typeSelectBtnActive,
+                  ]}
+                  onPress={() => setUsModalMode('direct')}
+                >
+                  <Text style={styles.typeSelectText}>Mi Cuenta Real (Directo)</Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.sandboxAddBtn}
-                  onPress={async () => {
-                    await connectSandboxUSBank(bank.id, bank.type !== 'credit');
-                    setShowPlaidModal(false);
-                  }}
+                  style={[
+                    styles.typeSelectBtn,
+                    usModalMode === 'sandbox' && styles.typeSelectBtnActive,
+                  ]}
+                  onPress={() => setUsModalMode('sandbox')}
                 >
-                  <Text style={styles.sandboxAddBtnText}>Vincular</Text>
+                  <Text style={styles.typeSelectText}>Plaid API / Demo Sandbox</Text>
                 </TouchableOpacity>
               </View>
-            ))}
 
-            <TouchableOpacity
-              style={styles.closeModalBtn}
-              onPress={() => setShowPlaidModal(false)}
-            >
-              <Text style={styles.closeModalBtnText}>Cerrar</Text>
-            </TouchableOpacity>
+              {usModalMode === 'direct' ? (
+                <>
+                  <Text style={styles.inputLabel}>
+                    1. Selecciona tu Banco (Wells Fargo, Chase, Truist...)
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginVertical: 6 }}
+                  >
+                    {US_MAJOR_BANKS.map((bank) => {
+                      const isSelected = selectedBankTemplate.id === bank.id;
+                      return (
+                        <TouchableOpacity
+                          key={bank.id}
+                          style={[
+                            styles.usBankPill,
+                            { borderColor: isSelected ? bank.color : '#334155' },
+                            isSelected && { backgroundColor: bank.color + '28' },
+                          ]}
+                          onPress={() => handleSelectUSBankTemplate(bank)}
+                        >
+                          <View
+                            style={[
+                              styles.usBankDot,
+                              { backgroundColor: bank.color },
+                            ]}
+                          />
+                          <Text style={styles.usBankPillText}>{bank.shortName}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <Text style={styles.inputLabel}>2. Tipo de Cuenta en {selectedBankTemplate.shortName}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.typeSelectBtn,
+                        usBankAccountType === 'checking' && styles.typeSelectBtnActive,
+                      ]}
+                      onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'checking')}
+                    >
+                      <Text style={styles.typeSelectText}>Checking</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.typeSelectBtn,
+                        usBankAccountType === 'savings' && styles.typeSelectBtnActive,
+                      ]}
+                      onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'savings')}
+                    >
+                      <Text style={styles.typeSelectText}>Savings (Ahorro)</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.typeSelectBtn,
+                        usBankAccountType === 'credit' && styles.typeSelectBtnActive,
+                      ]}
+                      onPress={() => handleSelectUSBankTemplate(selectedBankTemplate, 'credit')}
+                    >
+                      <Text style={styles.typeSelectText}>Tarjeta Crédito</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.inputLabel}>Nombre de la Cuenta</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={usBankCustomName}
+                    onChangeText={setUsBankCustomName}
+                    placeholder="Ej. Wells Fargo Checking"
+                    placeholderTextColor="#64748B"
+                  />
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 2 }}>
+                      <Text style={styles.inputLabel}>
+                        {usBankAccountType === 'credit'
+                          ? 'Deuda Usada Actual ($ USD)'
+                          : 'Tu Saldo Actual ($ USD)'}
+                      </Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        keyboardType="decimal-pad"
+                        value={usBankBalance}
+                        onChangeText={setUsBankBalance}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Últimos 4 dígitos</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder={selectedBankTemplate.defaultMask}
+                        placeholderTextColor="#64748B"
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        value={usBankMask}
+                        onChangeText={setUsBankMask}
+                      />
+                    </View>
+                  </View>
+
+                  {usBankAccountType === 'credit' ? (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Límite ($)</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="3000"
+                          placeholderTextColor="#64748B"
+                          keyboardType="decimal-pad"
+                          value={usBankCreditLimit}
+                          onChangeText={setUsBankCreditLimit}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Día Corte</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="18"
+                          placeholderTextColor="#64748B"
+                          keyboardType="number-pad"
+                          value={usBankClosingDay}
+                          onChangeText={setUsBankClosingDay}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.inputLabel}>Día Pago</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="15"
+                          placeholderTextColor="#64748B"
+                          keyboardType="number-pad"
+                          value={usBankDueDay}
+                          onChangeText={setUsBankDueDay}
+                        />
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={[styles.switchRow, { marginTop: 12, marginBottom: 12 }]}>
+                      <Switch
+                        value={usBankIncludeTotal}
+                        onValueChange={setUsBankIncludeTotal}
+                        trackColor={{ false: '#334155', true: '#0284C7' }}
+                      />
+                      <Text style={styles.switchLabel}>Sumar esta cuenta a mi Saldo Total</Text>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.realPlaidBtn,
+                      { marginTop: 10, backgroundColor: selectedBankTemplate.color },
+                    ]}
+                    onPress={handleConnectDirectUSBank}
+                  >
+                    <Ionicons name="shield-checkmark-outline" size={18} color="#FFF" />
+                    <Text style={[styles.realPlaidBtnText, { color: '#FFF' }]}>
+                      Agregar Cuenta de {selectedBankTemplate.shortName}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity style={styles.realPlaidBtn} onPress={handleOpenRealPlaid}>
+                    <Ionicons name="lock-closed-outline" size={18} color="#052E16" />
+                    <Text style={styles.realPlaidBtnText}>
+                      Abrir Plaid Link Oficial (Requiere Llaves Plaid)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.sandboxHeader}>
+                    Cuentas de Prueba con Movimientos (Wells Fargo, Chase, Truist...):
+                  </Text>
+
+                  {US_SANDBOX_BANKS.map((bank) => (
+                    <View key={bank.id} style={styles.sandboxBankRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.sandboxBankTitle}>
+                          {bank.institution} — {bank.accountName}
+                        </Text>
+                        <Text style={styles.sandboxBankSub}>
+                          Saldo demo: ${Math.abs(bank.balance).toFixed(2)} • Incluye{' '}
+                          {bank.sampleTransactions.length} mov.
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.sandboxAddBtn}
+                        onPress={async () => {
+                          await connectSandboxUSBank(bank.id, bank.type !== 'credit');
+                          setShowPlaidModal(false);
+                        }}
+                      >
+                        <Text style={styles.sandboxAddBtnText}>Vincular Demo</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              <TouchableOpacity
+                style={styles.closeModalBtn}
+                onPress={() => setShowPlaidModal(false)}
+              >
+                <Text style={styles.closeModalBtnText}>Cerrar</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* Modal para Agregar Cuenta Manual o Tarjeta de Crédito */}
+      {/* Modal para Agregar Cuenta Manual o Efectivo */}
       <Modal visible={showManualModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nueva Cuenta o Tarjeta de Crédito</Text>
+            <Text style={styles.modalTitle}>Nueva Cuenta Personal / Efectivo</Text>
 
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
               <TouchableOpacity
@@ -602,7 +873,7 @@ export default function AccountsScreen() {
             <Text style={styles.inputLabel}>Nombre de la cuenta o tarjeta</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Chase Freedom, Wells Fargo, Efectivo..."
+              placeholder="Ej. Efectivo Casa, Billetera, Cuenta Local..."
               placeholderTextColor="#64748B"
               value={name}
               onChangeText={setName}
@@ -611,7 +882,7 @@ export default function AccountsScreen() {
             <Text style={styles.inputLabel}>Banco o Institución</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Chase, Bank of America, Amex..."
+              placeholder="Ej. Wells Fargo, Chase, Truist, Efectivo..."
               placeholderTextColor="#64748B"
               value={institution}
               onChangeText={setInstitution}
@@ -830,7 +1101,7 @@ const styles = StyleSheet.create({
   switchLabel: { color: '#CBD5E1', fontSize: 13, fontWeight: '600' },
   typeSelectBtn: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 8,
     backgroundColor: '#1E293B',
     alignItems: 'center',
@@ -842,6 +1113,27 @@ const styles = StyleSheet.create({
     borderColor: '#38BDF8',
   },
   typeSelectText: { color: '#F8FAFC', fontSize: 11, fontWeight: '700' },
+  usBankPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#1E293B',
+    borderWidth: 1.5,
+    marginRight: 8,
+  },
+  usBankDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  usBankPillText: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.85)',
@@ -856,7 +1148,7 @@ const styles = StyleSheet.create({
     borderColor: '#1E293B',
   },
   modalTitle: { color: '#F8FAFC', fontSize: 19, fontWeight: '800', marginBottom: 6 },
-  modalSub: { color: '#94A3B8', fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  modalSub: { color: '#94A3B8', fontSize: 12, lineHeight: 18, marginBottom: 12 },
   realPlaidBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -865,14 +1157,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#4ADE80',
     paddingVertical: 12,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  realPlaidBtnText: { color: '#052E16', fontWeight: '800', fontSize: 14 },
+  realPlaidBtnText: { color: '#052E16', fontWeight: '800', fontSize: 13 },
   sandboxHeader: {
     color: '#CBD5E1',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   sandboxBankRow: {
     flexDirection: 'row',
@@ -882,31 +1174,31 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 8,
   },
-  sandboxBankTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700' },
+  sandboxBankTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '700' },
   sandboxBankSub: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
   sandboxAddBtn: {
     backgroundColor: '#38BDF8',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
-  sandboxAddBtnText: { color: '#0F172A', fontWeight: '800', fontSize: 12 },
+  sandboxAddBtnText: { color: '#0F172A', fontWeight: '800', fontSize: 11 },
   closeModalBtn: {
-    marginTop: 10,
+    marginTop: 8,
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: '#1E293B',
     alignItems: 'center',
   },
   closeModalBtnText: { color: '#94A3B8', fontWeight: '700' },
-  inputLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginTop: 10, marginBottom: 6 },
+  inputLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginTop: 8, marginBottom: 4 },
   input: {
     backgroundColor: '#1E293B',
     color: '#F8FAFC',
     borderRadius: 10,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
+    paddingVertical: 9,
+    fontSize: 14,
   },
   chip: {
     paddingHorizontal: 12,

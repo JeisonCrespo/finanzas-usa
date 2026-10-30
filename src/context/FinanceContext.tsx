@@ -16,6 +16,7 @@ import {
   seedDefaultCategoriesOnly,
 } from '../db/database';
 import { US_SANDBOX_BANKS, PLAID_BACKEND_URL } from '../services/plaidService';
+import { syncRecurringNotifications } from '../services/notificationService';
 
 export interface AppBackupPayload {
   version: number;
@@ -49,12 +50,18 @@ interface FinanceContextType {
   loans: LoanRecord[];
   backendUrl: string;
   setBackendUrl: (url: string) => Promise<void>;
+  plaidClientId: string;
+  plaidSecret: string;
+  setPlaidCredentials: (clientId: string, secret: string) => Promise<void>;
+  lastDriveBackupAt: string | null;
+  recordDriveBackupTimestamp: () => Promise<void>;
   includedTotalBalance: number;
   excludedTotalBalance: number;
   netWorthBalance: number;
   // Cuentas y Tarjetas de Crédito
   toggleAccountIncludeInTotal: (accountId: string) => Promise<void>;
   addManualAccount: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
+  connectCustomUSBank: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
   updateCreditCardDetails: (
     accountId: string,
     creditLimit: number,
@@ -83,8 +90,9 @@ interface FinanceContextType {
   addTransaction: (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => Promise<void>;
   transferBetweenAccounts: (params: TransferParams) => Promise<void>;
   deleteTransaction: (txId: string) => Promise<void>;
-  // Recurrentes
+  // Recurrentes y Recordatorios en Android
   addRecurringItem: (item: Omit<RecurringItem, 'id' | 'active'>) => Promise<void>;
+  updateRecurringReminderDays: (recurringId: string, reminderDaysBefore: number) => Promise<void>;
   confirmRecurringItem: (recurringId: string, customAmount?: number, customFee?: number) => Promise<void>;
   postponeRecurringItem: (recurringId: string, daysToPostpone: number) => Promise<void>;
   skipRecurringCycle: (recurringId: string) => Promise<void>;
@@ -110,6 +118,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [loans, setLoans] = useState<LoanRecord[]>([]);
   const [backendUrl, setBackendUrlState] = useState<string>(PLAID_BACKEND_URL);
+  const [plaidClientId, setPlaidClientIdState] = useState<string>('');
+  const [plaidSecret, setPlaidSecretState] = useState<string>('');
+  const [lastDriveBackupAt, setLastDriveBackupAtState] = useState<string | null>(null);
 
   const refreshAll = useCallback(async () => {
     try {
@@ -122,6 +133,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
       if (savedHost?.value) {
         setBackendUrlState(savedHost.value);
+      }
+
+      const savedClientId = await db.getFirstAsync<{ value: string }>(
+        "SELECT value FROM app_settings WHERE key = 'plaid_client_id'"
+      );
+      if (savedClientId?.value !== undefined) {
+        setPlaidClientIdState(savedClientId.value);
+      }
+
+      const savedSecret = await db.getFirstAsync<{ value: string }>(
+        "SELECT value FROM app_settings WHERE key = 'plaid_secret'"
+      );
+      if (savedSecret?.value !== undefined) {
+        setPlaidSecretState(savedSecret.value);
+      }
+
+      const savedDriveBackup = await db.getFirstAsync<{ value: string }>(
+        "SELECT value FROM app_settings WHERE key = 'last_drive_backup_at'"
+      );
+      if (savedDriveBackup?.value) {
+        setLastDriveBackupAtState(savedDriveBackup.value);
       }
 
       const rawAccounts = await db.getAllAsync<any>('SELECT * FROM accounts ORDER BY name ASC');
@@ -223,21 +255,24 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const rawRec = await db.getAllAsync<any>(
         'SELECT * FROM recurring_items WHERE active = 1 ORDER BY next_due_date ASC'
       );
-      setRecurringItems(
-        rawRec.map((r) => ({
-          id: r.id,
-          title: r.title,
-          amount: Number(r.amount),
-          type: r.type,
-          categoryId: r.category_id,
-          accountId: r.account_id,
-          frequency: r.frequency,
-          nextDueDate: r.next_due_date,
-          postponedUntil: r.postponed_until ?? undefined,
-          active: Boolean(r.active),
-          notes: r.notes ?? undefined,
-        }))
-      );
+      const mappedRec: RecurringItem[] = rawRec.map((r) => ({
+        id: r.id,
+        title: r.title,
+        amount: Number(r.amount),
+        type: r.type,
+        categoryId: r.category_id,
+        accountId: r.account_id,
+        frequency: r.frequency,
+        nextDueDate: r.next_due_date,
+        postponedUntil: r.postponed_until ?? undefined,
+        reminderDaysBefore: r.reminder_days !== undefined ? Number(r.reminder_days) : 1,
+        active: Boolean(r.active),
+        notes: r.notes ?? undefined,
+      }));
+      setRecurringItems(mappedRec);
+
+      // Programar notificaciones locales en Android (1 o 2 días antes)
+      syncRecurringNotifications(mappedRec).catch(() => {});
     } finally {
       setLoading(false);
     }
@@ -255,6 +290,32 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       [clean]
     );
     setBackendUrlState(clean);
+  };
+
+  const setPlaidCredentials = async (clientId: string, secret: string) => {
+    const cleanId = clientId.trim();
+    const cleanSec = secret.trim();
+    const db = await getDb();
+    await db.runAsync(
+      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('plaid_client_id', ?)",
+      [cleanId]
+    );
+    await db.runAsync(
+      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('plaid_secret', ?)",
+      [cleanSec]
+    );
+    setPlaidClientIdState(cleanId);
+    setPlaidSecretState(cleanSec);
+  };
+
+  const recordDriveBackupTimestamp = async () => {
+    const nowIso = new Date().toISOString();
+    const db = await getDb();
+    await db.runAsync(
+      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('last_drive_backup_at', ?)",
+      [nowIso]
+    );
+    setLastDriveBackupAtState(nowIso);
   };
 
   const includedTotalBalance = useMemo(() => {
@@ -304,6 +365,35 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         account.currency || 'USD',
         account.includeInTotal ? 1 : 0,
         account.color,
+        account.creditLimit ?? 0,
+        account.closingDay ?? 0,
+        account.dueDay ?? 0,
+      ]
+    );
+    await refreshAll();
+  };
+
+  const connectCustomUSBank = async (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => {
+    const db = await getDb();
+    const id = `acc-usbank-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    await db.runAsync(
+      `INSERT INTO accounts (
+        id, name, institution, mask, type, balance, currency, include_in_total, is_plaid_connected, plaid_account_id, color, last_synced_at,
+        credit_limit, closing_day, due_day
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        account.name,
+        account.institution,
+        account.mask ?? null,
+        account.type,
+        account.balance,
+        account.currency || 'USD',
+        account.includeInTotal ? 1 : 0,
+        `us_bank_${id}`,
+        account.color,
+        nowIso,
         account.creditLimit ?? 0,
         account.closingDay ?? 0,
         account.dueDay ?? 0,
@@ -671,8 +761,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const id = `rec-${Date.now()}`;
     await db.runAsync(
       `INSERT INTO recurring_items (
-        id, title, amount, type, category_id, account_id, frequency, next_due_date, postponed_until, active, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        id, title, amount, type, category_id, account_id, frequency, next_due_date, postponed_until, reminder_days, active, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       [
         id,
         item.title.trim(),
@@ -683,8 +773,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         item.frequency,
         item.nextDueDate,
         item.postponedUntil ?? null,
+        item.reminderDaysBefore !== undefined ? item.reminderDaysBefore : 1,
         item.notes ?? null,
       ]
+    );
+    await refreshAll();
+  };
+
+  const updateRecurringReminderDays = async (recurringId: string, reminderDaysBefore: number) => {
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE recurring_items SET reminder_days = ? WHERE id = ?`,
+      [reminderDaysBefore, recurringId]
     );
     await refreshAll();
   };
@@ -861,8 +961,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     for (const r of parsed.recurringItems || []) {
       await db.runAsync(
         `INSERT INTO recurring_items (
-          id, title, amount, type, category_id, account_id, frequency, next_due_date, postponed_until, active, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, title, amount, type, category_id, account_id, frequency, next_due_date, postponed_until, reminder_days, active, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           r.id,
           r.title,
@@ -873,6 +973,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           r.frequency,
           r.nextDueDate,
           r.postponedUntil ?? null,
+          r.reminderDaysBefore !== undefined ? r.reminderDaysBefore : 1,
           r.active ? 1 : 0,
           r.notes ?? null,
         ]
@@ -985,11 +1086,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         loans,
         backendUrl,
         setBackendUrl,
+        plaidClientId,
+        plaidSecret,
+        setPlaidCredentials,
+        lastDriveBackupAt,
+        recordDriveBackupTimestamp,
         includedTotalBalance,
         excludedTotalBalance,
         netWorthBalance,
         toggleAccountIncludeInTotal,
         addManualAccount,
+        connectCustomUSBank,
         updateCreditCardDetails,
         connectSandboxUSBank,
         deleteAccount,
@@ -1009,6 +1116,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         transferBetweenAccounts,
         deleteTransaction,
         addRecurringItem,
+        updateRecurringReminderDays,
         confirmRecurringItem,
         postponeRecurringItem,
         skipRecurringCycle,

@@ -9,25 +9,41 @@ app.use(express.json());
 
 const PLAID_ENV = process.env.PLAID_ENV || 'sandbox'; // 'sandbox' | 'development' | 'production'
 
-const config = new Configuration({
-  basePath: PlaidEnvironments[PLAID_ENV],
-  baseOptions: {
-    headers: {
-      'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID || '',
-      'PLAID-SECRET': process.env.PLAID_SECRET || '',
-    },
-  },
-});
+function getPlaidClient(customClientId, customSecret) {
+  const clientId = (customClientId || process.env.PLAID_CLIENT_ID || '').trim();
+  const secret = (customSecret || process.env.PLAID_SECRET || '').trim();
 
-const plaidClient = new PlaidApi(config);
+  const config = new Configuration({
+    basePath: PlaidEnvironments[PLAID_ENV] || PlaidEnvironments.sandbox,
+    baseOptions: {
+      headers: {
+        'PLAID-CLIENT-ID': clientId,
+        'PLAID-SECRET': secret,
+      },
+    },
+  });
+
+  return new PlaidApi(config);
+}
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    ok: true,
+    service: 'Finanzas USA Backend',
+    version: '1.2.0',
+    plaidConfiguredOnServer: Boolean(process.env.PLAID_CLIENT_ID && process.env.PLAID_SECRET),
+  });
+});
 
 /**
  * 1. Genera un link_token seguro para abrir Plaid Link en Android (com.jeison.finanzasusa)
  */
 app.post('/api/create_link_token', async (req, res) => {
   try {
-    const { userId = 'user-android-1' } = req.body;
-    const response = await plaidClient.linkTokenCreate({
+    const { userId = 'user-android-1', plaidClientId, plaidSecret } = req.body || {};
+    const client = getPlaidClient(plaidClientId, plaidSecret);
+
+    const response = await client.linkTokenCreate({
       user: { client_user_id: String(userId) },
       client_name: 'Finanzas USA Android',
       products: [Products.Transactions],
@@ -49,17 +65,18 @@ app.post('/api/create_link_token', async (req, res) => {
  */
 app.post('/api/exchange_public_token', async (req, res) => {
   try {
-    const { public_token, institutionName = 'US Bank' } = req.body;
+    const { public_token, institutionName = 'US Bank', plaidClientId, plaidSecret } = req.body || {};
+    const client = getPlaidClient(plaidClientId, plaidSecret);
 
-    const exchangeRes = await plaidClient.itemPublicTokenExchange({ public_token });
+    const exchangeRes = await client.itemPublicTokenExchange({ public_token });
     const accessToken = exchangeRes.data.access_token;
     const itemId = exchangeRes.data.item_id;
 
     // Obtener cuentas bancarias vinculadas (Checking, Savings, Credit Card)
-    const accountsRes = await plaidClient.accountsGet({ access_token: accessToken });
+    const accountsRes = await client.accountsGet({ access_token: accessToken });
 
     // Sincronizar últimas transacciones con /transactions/sync
-    const syncRes = await plaidClient.transactionsSync({ access_token: accessToken });
+    const syncRes = await client.transactionsSync({ access_token: accessToken });
 
     const mappedAccounts = accountsRes.data.accounts.map((acc) => ({
       id: `acc-plaid-${acc.account_id}`,
@@ -80,7 +97,7 @@ app.post('/api/exchange_public_token', async (req, res) => {
     const mappedTransactions = syncRes.data.added.map((tx) => ({
       accountId: `acc-plaid-${tx.account_id}`,
       categoryId: tx.amount > 0 ? 'cat-shopping' : 'cat-salary',
-      type: tx.amount > 0 ? 'expense' : 'income', // En Plaid los montos positivos son cargos/gastos
+      type: tx.amount > 0 ? 'expense' : 'income',
       amount: Math.abs(tx.amount),
       description: tx.name,
       merchantName: tx.merchant_name || tx.name,

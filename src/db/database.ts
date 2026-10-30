@@ -132,6 +132,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       frequency TEXT NOT NULL,
       next_due_date TEXT NOT NULL,
       postponed_until TEXT,
+      reminder_days INTEGER NOT NULL DEFAULT 1,
       active INTEGER NOT NULL DEFAULT 1,
       notes TEXT,
       FOREIGN KEY (account_id) REFERENCES accounts (id),
@@ -145,6 +146,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN credit_limit REAL DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN closing_day INTEGER DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN due_day INTEGER DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN reminder_days INTEGER NOT NULL DEFAULT 1;`); } catch {}
 
   const initializedFlag = await db.getFirstAsync<{ value: string }>(
     "SELECT value FROM app_settings WHERE key = 'db_seeded'"
