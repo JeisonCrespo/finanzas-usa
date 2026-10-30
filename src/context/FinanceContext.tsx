@@ -48,6 +48,7 @@ interface FinanceContextType {
   connectSandboxUSBank: (bankPresetId: string, includeInTotal: boolean) => Promise<void>;
   deleteAccount: (accountId: string) => Promise<void>;
   addCategory: (category: Omit<Category, 'id' | 'isCustom'>) => Promise<void>;
+  updateCategoryBudget: (categoryId: string, monthlyBudget: number) => Promise<void>;
   deleteCategory: (categoryId: string) => Promise<void>;
   addTransaction: (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => Promise<void>;
   transferBetweenAccounts: (params: TransferParams) => Promise<void>;
@@ -58,6 +59,7 @@ interface FinanceContextType {
   skipRecurringCycle: (recurringId: string) => Promise<void>;
   deleteRecurringItem: (recurringId: string) => Promise<void>;
   getCategoryBreakdown: (type: 'expense' | 'income', accountFilterId?: string) => CategoryBreakdown[];
+  getCategorySpentThisMonth: (categoryId: string) => number;
   resetToZero: () => Promise<void>;
   exportBackupJson: () => string;
   importBackupJson: (rawJson: string) => Promise<void>;
@@ -115,6 +117,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           color: c.color,
           icon: c.icon,
           isCustom: Boolean(c.is_custom),
+          monthlyBudget: Number(c.monthly_budget || 0),
         }))
       );
 
@@ -293,9 +296,30 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const db = await getDb();
     const id = `cat-custom-${Date.now()}`;
     await db.runAsync(
-      `INSERT INTO categories (id, name, type, color, icon, is_custom) VALUES (?, ?, ?, ?, ?, 1)`,
-      [id, category.name.trim(), category.type, category.color, category.icon]
+      `INSERT INTO categories (id, name, type, color, icon, is_custom, monthly_budget) VALUES (?, ?, ?, ?, ?, 1, ?)`,
+      [
+        id,
+        category.name.trim(),
+        category.type,
+        category.color,
+        category.icon,
+        category.monthlyBudget && category.monthlyBudget > 0 ? category.monthlyBudget : 0,
+      ]
     );
+    await refreshAll();
+  };
+
+  /**
+   * Permite definir o cambiar el presupuesto mensual ($ USD) de cualquier categoría
+   * (ej. Supermercado = $200). Si pones 0, queda sin límite.
+   */
+  const updateCategoryBudget = async (categoryId: string, monthlyBudget: number) => {
+    const db = await getDb();
+    const cleanBudget = monthlyBudget > 0 ? monthlyBudget : 0;
+    await db.runAsync('UPDATE categories SET monthly_budget = ? WHERE id = ?', [
+      cleanBudget,
+      categoryId,
+    ]);
     await refreshAll();
   };
 
@@ -305,11 +329,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await refreshAll();
   };
 
-  /**
-   * Registra un Gasto o Ingreso con soporte de Comisión Opcional (`fee`).
-   * - Si es Gasto ($100 + $2.50 comisión): descuenta $102.50 de la cuenta.
-   * - Si es Ingreso ($500 con $5 comisión): suma $495.00 netos a la cuenta.
-   */
   const addTransaction = async (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => {
     const db = await getDb();
     const id = `tx-${Date.now()}`;
@@ -351,11 +370,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await refreshAll();
   };
 
-  /**
-   * TRANSFERENCIA ENTRE CUENTAS CON COMISIÓN OPCIONAL:
-   * - Descuenta (amount + fee) de la cuenta de origen (`fromAccountId`)
-   * - Suma (amount) a la cuenta de destino (`toAccountId`)
-   */
   const transferBetweenAccounts = async ({
     fromAccountId,
     toAccountId,
@@ -383,13 +397,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       [txId, fromAccountId, toAccountId, amount, cleanFee, autoDesc, date]
     );
 
-    // Descontar monto + comisión de la cuenta origen
     await db.runAsync('UPDATE accounts SET balance = balance - ? WHERE id = ?', [
       amount + cleanFee,
       fromAccountId,
     ]);
 
-    // Sumar monto a la cuenta destino
     await db.runAsync('UPDATE accounts SET balance = balance + ? WHERE id = ?', [
       amount,
       toAccountId,
@@ -557,8 +569,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     for (const c of parsed.categories) {
       await db.runAsync(
-        `INSERT INTO categories (id, name, type, color, icon, is_custom) VALUES (?, ?, ?, ?, ?, ?)`,
-        [c.id, c.name, c.type, c.color, c.icon, c.isCustom ? 1 : 0]
+        `INSERT INTO categories (id, name, type, color, icon, is_custom, monthly_budget) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [c.id, c.name, c.type, c.color, c.icon, c.isCustom ? 1 : 0, c.monthlyBudget ?? 0]
       );
     }
 
@@ -567,7 +579,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         `INSERT INTO accounts (
           id, name, institution, mask, type, balance, currency,
           include_in_total, is_plaid_connected, plaid_account_id, plaid_item_id, color, last_synced_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           a.id,
           a.name,
@@ -633,6 +645,24 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await refreshAll();
   };
 
+  /**
+   * Calcula cuánto se ha gastado en el mes actual (YYYY-MM) en una categoría específica.
+   */
+  const getCategorySpentThisMonth = useCallback(
+    (categoryId: string): number => {
+      const currentYearMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+      return transactions
+        .filter(
+          (t) =>
+            t.type === 'expense' &&
+            t.categoryId === categoryId &&
+            t.date.startsWith(currentYearMonth)
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+    },
+    [transactions]
+  );
+
   const getCategoryBreakdown = useCallback(
     (type: 'expense' | 'income', accountFilterId?: string): CategoryBreakdown[] => {
       const relevantTx = transactions.filter(
@@ -653,7 +683,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           grandTotal += tx.amount;
         }
 
-        // Si cualquier movimiento o transferencia tuvo comisión bancaria, sumarla a Comisiones en la gráfica de gastos
         if (type === 'expense' && tx.fee && tx.fee > 0) {
           const prevFee = map.get('cat-fees') || { total: 0, count: 0 };
           map.set('cat-fees', {
@@ -677,6 +706,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           total: stats.total,
           percentage: (stats.total / grandTotal) * 100,
           count: stats.count,
+          monthlyBudget: cat?.monthlyBudget || 0,
         });
       }
 
@@ -703,6 +733,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         connectSandboxUSBank,
         deleteAccount,
         addCategory,
+        updateCategoryBudget,
         deleteCategory,
         addTransaction,
         transferBetweenAccounts,
@@ -713,6 +744,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         skipRecurringCycle,
         deleteRecurringItem,
         getCategoryBreakdown,
+        getCategorySpentThisMonth,
         resetToZero,
         exportBackupJson,
         importBackupJson,

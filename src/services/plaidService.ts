@@ -1,7 +1,7 @@
 import { BankAccount, Transaction } from '../types/finance';
 
-// URL del servidor backend local o desplegado que maneja los secretos de Plaid
-export const PLAID_BACKEND_URL = 'http://10.0.2.2:4000/api'; // 10.0.2.2 apunta a localhost desde el emulador Android
+// URL oficial de tu servidor desplegado en Vercel
+export const PLAID_BACKEND_URL = 'https://finanzas-usa-puce.vercel.app/api';
 
 export interface PlaidSyncResponse {
   accounts: BankAccount[];
@@ -9,10 +9,13 @@ export interface PlaidSyncResponse {
 }
 
 /**
- * Solicita un link_token al backend para abrir el modal nativo de Plaid Link en Android
+ * Solicita un link_token al backend en Vercel para abrir el modal nativo de Plaid Link en Android
  */
-export async function createPlaidLinkToken(userId = 'user-default'): Promise<string> {
-  const response = await fetch(`${PLAID_BACKEND_URL}/create_link_token`, {
+export async function createPlaidLinkToken(
+  userId = 'user-default',
+  customBaseUrl = PLAID_BACKEND_URL
+): Promise<string> {
+  const response = await fetch(`${customBaseUrl}/create_link_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
@@ -32,9 +35,10 @@ export async function createPlaidLinkToken(userId = 'user-default'): Promise<str
  */
 export async function exchangePlaidPublicToken(
   publicToken: string,
-  institutionName: string
+  institutionName: string,
+  customBaseUrl = PLAID_BACKEND_URL
 ): Promise<PlaidSyncResponse> {
-  const response = await fetch(`${PLAID_BACKEND_URL}/exchange_public_token`, {
+  const response = await fetch(`${customBaseUrl}/exchange_public_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ public_token: publicToken, institutionName }),
@@ -47,10 +51,6 @@ export async function exchangePlaidPublicToken(
   return response.json();
 }
 
-/**
- * Catálogo Sandbox integrado de bancos de EE. UU. para pruebas instantáneas en Android
- * sin necesidad de tener el backend encendido.
- */
 export const US_SANDBOX_BANKS = [
   {
     id: 'wells_fargo',

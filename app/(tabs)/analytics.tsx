@@ -8,11 +8,16 @@ import {
 } from 'react-native';
 import { useFinance } from '../../src/context/FinanceContext';
 import { DonutChart } from '../../src/components/DonutChart';
-import { TransactionType } from '../../src/types/finance';
 import { SmartIcon } from '../../src/components/BrandIcon';
 
 export default function AnalyticsScreen() {
-  const { accounts, transactions, getCategoryBreakdown } = useFinance();
+  const {
+    accounts,
+    categories,
+    transactions,
+    getCategoryBreakdown,
+    getCategorySpentThisMonth,
+  } = useFinance();
 
   const [selectedType, setSelectedType] = useState<'expense' | 'income'>('expense');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
@@ -26,6 +31,11 @@ export default function AnalyticsScreen() {
   const totalExpense = transactions
     .filter((t) => t.type === 'expense' && (selectedAccountId === 'all' || t.accountId === selectedAccountId))
     .reduce((sum, t) => sum + t.amount, 0);
+
+  // Categorías con presupuesto mensual configurado
+  const budgetedCategories = categories.filter(
+    (c) => c.type === 'expense' && (c.monthlyBudget || 0) > 0
+  );
 
   return (
     <View style={styles.container}>
@@ -88,6 +98,80 @@ export default function AnalyticsScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Tarjeta de Control de Presupuestos del Mes */}
+        {budgetedCategories.length > 0 && (
+          <View style={styles.budgetsCard}>
+            <Text style={styles.budgetsCardTitle}>
+              Presupuestos del Mes (Informativos — Sin bloqueo)
+            </Text>
+
+            {budgetedCategories.map((cat) => {
+              const spent = getCategorySpentThisMonth(cat.id);
+              const limit = cat.monthlyBudget || 0;
+              const pct = limit > 0 ? (spent / limit) * 100 : 0;
+              const over = spent > limit;
+
+              return (
+                <View key={cat.id} style={styles.budgetItemRow}>
+                  <View style={styles.breakdownTop}>
+                    <View style={styles.breakdownLeft}>
+                      <SmartIcon
+                        iconName={cat.icon}
+                        color={cat.color}
+                        size={16}
+                        boxSize={32}
+                      />
+                      <View>
+                        <Text style={styles.catName}>{cat.name}</Text>
+                        <Text
+                          style={[
+                            styles.catCount,
+                            { color: over ? '#F87171' : '#4ADE80' },
+                          ]}
+                        >
+                          {over
+                            ? `Sobrepasado por $${(spent - limit).toFixed(2)}`
+                            : `Te quedan $${(limit - spent).toFixed(2)} este mes`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.catTotal}>
+                        ${spent.toFixed(2)} / ${limit.toFixed(0)}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.catPercent,
+                          { color: over ? '#EF4444' : '#38BDF8' },
+                        ]}
+                      >
+                        {pct.toFixed(0)}%
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width: `${Math.min(pct, 100)}%`,
+                          backgroundColor: over
+                            ? '#EF4444'
+                            : pct > 80
+                            ? '#F59E0B'
+                            : '#22C55E',
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* Selector Gastos vs Ingresos para la Gráfica Circular */}
         <View style={styles.toggleRow}>
@@ -205,6 +289,23 @@ const styles = StyleSheet.create({
   cashflowDivider: { width: 1, backgroundColor: '#1E293B' },
   cashflowLabel: { color: '#64748B', fontSize: 10, fontWeight: '700' },
   cashflowVal: { fontSize: 15, fontWeight: '800', marginTop: 4 },
+  budgetsCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 14,
+  },
+  budgetsCardTitle: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  budgetItemRow: {
+    marginBottom: 14,
+  },
   toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
   toggleBtn: {
     flex: 1,
@@ -242,7 +343,7 @@ const styles = StyleSheet.create({
   },
   breakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   catName: { color: '#F8FAFC', fontSize: 14, fontWeight: '700' },
-  catCount: { color: '#64748B', fontSize: 11, marginTop: 1 },
+  catCount: { color: '#64748B', fontSize: 11, marginTop: 1, fontWeight: '600' },
   catTotal: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
   catPercent: { fontSize: 12, fontWeight: '700', marginTop: 1 },
   progressTrack: {

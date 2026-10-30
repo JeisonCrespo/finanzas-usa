@@ -18,21 +18,21 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
-  // Categorías de Gastos (incluye íconos de marcas y gaming)
-  { id: 'cat-housing', name: 'Vivienda / Renta', type: 'expense', color: '#6366F1', icon: 'home-outline', isCustom: false },
-  { id: 'cat-groceries', name: 'Supermercado', type: 'expense', color: '#10B981', icon: 'cart-outline', isCustom: false },
-  { id: 'cat-dining', name: 'Restaurantes', type: 'expense', color: '#F59E0B', icon: 'restaurant-outline', isCustom: false },
-  { id: 'cat-transport', name: 'Transporte / Gasolina', type: 'expense', color: '#3B82F6', icon: 'car-outline', isCustom: false },
-  { id: 'cat-utilities', name: 'Servicios (Luz, Internet)', type: 'expense', color: '#06B6D4', icon: 'flash-outline', isCustom: false },
-  { id: 'cat-subscriptions', name: 'Streaming (Netflix, Spotify)', type: 'expense', color: '#E50914', icon: 'mci:netflix', isCustom: false },
-  { id: 'cat-gaming', name: 'Gaming (Steam, PlayStation, Xbox)', type: 'expense', color: '#38BDF8', icon: 'mci:steam', isCustom: false },
-  { id: 'cat-health', name: 'Salud y Farmacia', type: 'expense', color: '#EC4899', icon: 'medkit-outline', isCustom: false },
-  { id: 'cat-shopping', name: 'Compras / Amazon', type: 'expense', color: '#FF9900', icon: 'logo-amazon', isCustom: false },
-  { id: 'cat-fees', name: 'Comisiones Bancarias / ATM', type: 'expense', color: '#94A3B8', icon: 'card-outline', isCustom: false },
+  // Categorías de Gastos (incluye presupuestos sugeridos opcionales editables)
+  { id: 'cat-housing', name: 'Vivienda / Renta', type: 'expense', color: '#6366F1', icon: 'home-outline', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-groceries', name: 'Supermercado / Comida', type: 'expense', color: '#10B981', icon: 'cart-outline', isCustom: false, monthlyBudget: 200 },
+  { id: 'cat-dining', name: 'Restaurantes', type: 'expense', color: '#F59E0B', icon: 'restaurant-outline', isCustom: false, monthlyBudget: 120 },
+  { id: 'cat-transport', name: 'Transporte / Gasolina', type: 'expense', color: '#3B82F6', icon: 'car-outline', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-utilities', name: 'Servicios (Luz, Internet)', type: 'expense', color: '#06B6D4', icon: 'flash-outline', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-subscriptions', name: 'Streaming (Netflix, Spotify)', type: 'expense', color: '#E50914', icon: 'mci:netflix', isCustom: false, monthlyBudget: 50 },
+  { id: 'cat-gaming', name: 'Gaming (Steam, PlayStation, Xbox)', type: 'expense', color: '#38BDF8', icon: 'mci:steam', isCustom: false, monthlyBudget: 60 },
+  { id: 'cat-health', name: 'Salud y Farmacia', type: 'expense', color: '#EC4899', icon: 'medkit-outline', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-shopping', name: 'Compras / Amazon', type: 'expense', color: '#FF9900', icon: 'logo-amazon', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-fees', name: 'Comisiones Bancarias / ATM', type: 'expense', color: '#94A3B8', icon: 'card-outline', isCustom: false, monthlyBudget: 0 },
   // Categorías de Ingresos
-  { id: 'cat-salary', name: 'Nómina / Paycheck', type: 'income', color: '#22C55E', icon: 'cash-outline', isCustom: false },
-  { id: 'cat-freelance', name: 'Freelance / Negocio', type: 'income', color: '#14B8A6', icon: 'briefcase-outline', isCustom: false },
-  { id: 'cat-investments', name: 'Dividendos / Intereses', type: 'income', color: '#EAB308', icon: 'trending-up-outline', isCustom: false },
+  { id: 'cat-salary', name: 'Nómina / Paycheck', type: 'income', color: '#22C55E', icon: 'cash-outline', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-freelance', name: 'Freelance / Negocio', type: 'income', color: '#14B8A6', icon: 'briefcase-outline', isCustom: false, monthlyBudget: 0 },
+  { id: 'cat-investments', name: 'Dividendos / Intereses', type: 'income', color: '#EAB308', icon: 'trending-up-outline', isCustom: false, monthlyBudget: 0 },
 ];
 
 async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -66,7 +66,8 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       type TEXT NOT NULL,
       color TEXT NOT NULL,
       icon TEXT NOT NULL,
-      is_custom INTEGER NOT NULL DEFAULT 0
+      is_custom INTEGER NOT NULL DEFAULT 0,
+      monthly_budget REAL NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -104,18 +105,18 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // Migración segura para bases de datos ya creadas en el teléfono
+  // Migraciones seguras para bases de datos ya creadas
   try {
     await db.execAsync(`ALTER TABLE transactions ADD COLUMN fee REAL NOT NULL DEFAULT 0;`);
-  } catch {
-    // La columna fee ya existe
-  }
+  } catch {}
 
   try {
     await db.execAsync(`ALTER TABLE transactions ADD COLUMN to_account_id TEXT;`);
-  } catch {
-    // La columna to_account_id ya existe
-  }
+  } catch {}
+
+  try {
+    await db.execAsync(`ALTER TABLE categories ADD COLUMN monthly_budget REAL NOT NULL DEFAULT 0;`);
+  } catch {}
 
   const initializedFlag = await db.getFirstAsync<{ value: string }>(
     "SELECT value FROM app_settings WHERE key = 'db_seeded'"
@@ -137,8 +138,8 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
 export async function seedDefaultCategoriesOnly(db: SQLite.SQLiteDatabase): Promise<void> {
   for (const cat of DEFAULT_CATEGORIES) {
     await db.runAsync(
-      `INSERT OR REPLACE INTO categories (id, name, type, color, icon, is_custom) VALUES (?, ?, ?, ?, ?, ?)`,
-      [cat.id, cat.name, cat.type, cat.color, cat.icon, cat.isCustom ? 1 : 0]
+      `INSERT OR IGNORE INTO categories (id, name, type, color, icon, is_custom, monthly_budget) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [cat.id, cat.name, cat.type, cat.color, cat.icon, cat.isCustom ? 1 : 0, cat.monthlyBudget ?? 0]
     );
   }
 }

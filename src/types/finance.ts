@@ -8,11 +8,11 @@ export interface BankAccount {
   id: string;
   name: string;
   institution: string;
-  mask?: string; // Últimos 4 dígitos, ej: "4821"
+  mask?: string;
   type: AccountType;
   balance: number;
   currency: string;
-  includeInTotal: boolean; // Define si esta cuenta se suma o no al saldo total
+  includeInTotal: boolean;
   isPlaidConnected: boolean;
   plaidAccountId?: string;
   plaidItemId?: string;
@@ -27,16 +27,17 @@ export interface Category {
   color: string;
   icon: string;
   isCustom: boolean;
+  monthlyBudget?: number; // Presupuesto mensual opcional ($ USD), si es 0 o undefined no tiene tope
 }
 
 export interface Transaction {
   id: string;
   accountId: string;
-  toAccountId?: string; // Cuenta destino cuando type === 'transfer'
+  toAccountId?: string;
   categoryId: string;
   type: TransactionType;
   amount: number;
-  fee?: number; // Comisión opcional cobrada en la transacción o transferencia
+  fee?: number;
   description: string;
   merchantName?: string;
   date: string; // YYYY-MM-DD
@@ -53,7 +54,7 @@ export interface RecurringItem {
   categoryId: string;
   accountId: string;
   frequency: RecurrenceFrequency;
-  nextDueDate: string; // YYYY-MM-DD
+  nextDueDate: string;
   postponedUntil?: string;
   active: boolean;
   notes?: string;
@@ -67,4 +68,5 @@ export interface CategoryBreakdown {
   total: number;
   percentage: number;
   count: number;
+  monthlyBudget?: number;
 }
