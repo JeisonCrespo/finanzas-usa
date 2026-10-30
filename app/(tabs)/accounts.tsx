@@ -31,6 +31,7 @@ export default function AccountsScreen() {
     toggleAccountIncludeInTotal,
     connectCustomUSBank,
     connectBankViaLivePlaidApi,
+    updateAccountBalanceAndMask,
     connectSandboxUSBank,
     addManualAccount,
     updateCreditCardDetails,
@@ -70,6 +71,12 @@ export default function AccountsScreen() {
   const [editLimit, setEditLimit] = useState('');
   const [editClosing, setEditClosing] = useState('');
   const [editDue, setEditDue] = useState('');
+
+  // Modal para ajustar el saldo real y últimos 4 dígitos de cualquier cuenta (ej. tras conectar con Plaid Sandbox)
+  const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
+  const [editAccName, setEditAccName] = useState('');
+  const [editAccBalance, setEditAccBalance] = useState('');
+  const [editAccMask, setEditAccMask] = useState('');
 
   // Estado para transferir entre cuentas
   const [fromAccId, setFromAccId] = useState('');
@@ -413,14 +420,113 @@ export default function AccountsScreen() {
                   </Text>
                 </View>
 
-                <TouchableOpacity onPress={() => deleteAccount(acc.id)}>
-                  <Ionicons name="trash-outline" size={18} color="#64748B" />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      backgroundColor: '#1E293B',
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#334155',
+                    }}
+                    onPress={() => {
+                      setEditingAccount(acc);
+                      setEditAccName(acc.name);
+                      setEditAccBalance(String(acc.balance));
+                      setEditAccMask(acc.mask || '');
+                    }}
+                  >
+                    <Ionicons name="create-outline" size={14} color="#38BDF8" />
+                    <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>
+                      Editar Saldo
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => deleteAccount(acc.id)}>
+                    <Ionicons name="trash-outline" size={18} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           );
         })}
       </ScrollView>
+
+      {/* Modal para Editar el Saldo Real, Nombre y 4 Dígitos de cualquier Cuenta */}
+      <Modal visible={Boolean(editingAccount)} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              Ajustar a tu Saldo Real: {editingAccount?.institution}
+            </Text>
+            <Text style={styles.modalSub}>
+              Como tu llave de Plaid es de tipo Sandbox (Pruebas), Plaid descarga saldos de prueba ($110 / $210). Aquí puedes poner tu saldo real exacto en dólares y tus últimos 4 dígitos.
+            </Text>
+
+            <Text style={styles.inputLabel}>Nombre de tu Cuenta</Text>
+            <TextInput
+              style={styles.input}
+              value={editAccName}
+              onChangeText={setEditAccName}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 2 }}>
+                <Text style={styles.inputLabel}>
+                  {editingAccount?.type === 'credit'
+                    ? 'Deuda Actual en Tarjeta ($ USD)'
+                    : 'Tu Saldo Real Actual ($ USD)'}
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="decimal-pad"
+                  value={editAccBalance}
+                  onChangeText={setEditAccBalance}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Últimos 4 dígitos</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  value={editAccMask}
+                  onChangeText={setEditAccMask}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+                onPress={() => setEditingAccount(null)}
+              >
+                <Text style={styles.closeModalBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+                onPress={async () => {
+                  if (editingAccount) {
+                    await updateAccountBalanceAndMask(
+                      editingAccount.id,
+                      editAccName || editingAccount.name,
+                      parseFloat(editAccBalance) || 0,
+                      editAccMask
+                    );
+                    setEditingAccount(null);
+                  }
+                }}
+              >
+                <Text style={styles.realPlaidBtnText}>Guardar Saldo Real</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal para Configurar Corte, Pago y Límite de Tarjeta de Crédito */}
       <Modal visible={Boolean(editingCard)} animationType="fade" transparent>

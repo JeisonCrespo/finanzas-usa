@@ -70,6 +70,12 @@ interface FinanceContextType {
   addManualAccount: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
   connectCustomUSBank: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
   connectBankViaLivePlaidApi: (bank: USBankTemplate) => Promise<number>;
+  updateAccountBalanceAndMask: (
+    accountId: string,
+    newName: string,
+    newBalance: number,
+    newMask?: string
+  ) => Promise<void>;
   updateCreditCardDetails: (
     accountId: string,
     creditLimit: number,
@@ -467,6 +473,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     await refreshAll();
     return count;
+  };
+
+  const updateAccountBalanceAndMask = async (
+    accountId: string,
+    newName: string,
+    newBalance: number,
+    newMask?: string
+  ) => {
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE accounts SET name = ?, balance = ?, mask = ? WHERE id = ?`,
+      [newName.trim(), newBalance, newMask?.trim() || null, accountId]
+    );
+    await refreshAll();
   };
 
   const updateCreditCardDetails = async (
@@ -1165,6 +1185,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addManualAccount,
         connectCustomUSBank,
         connectBankViaLivePlaidApi,
+        updateAccountBalanceAndMask,
         updateCreditCardDetails,
         connectSandboxUSBank,
         deleteAccount,
