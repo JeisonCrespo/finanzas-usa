@@ -36,12 +36,16 @@ export default function AccountsScreen() {
     addManualAccount,
     updateCreditCardDetails,
     transferBetweenAccounts,
+    importBankMovementsText,
     deleteAccount,
   } = useFinance();
 
   const [showPlaidModal, setShowPlaidModal] = useState(false);
   const [showManualModal, setShowManualModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showSmartImportModal, setShowSmartImportModal] = useState(false);
+  const [smartImportText, setSmartImportText] = useState('');
+  const [smartImportAccId, setSmartImportAccId] = useState('');
 
   // Estado para conexión directa de Wells Fargo, Chase, Truist, etc.
   const [selectedBankTemplate, setSelectedBankTemplate] = useState<USBankTemplate>(US_MAJOR_BANKS[0]);
@@ -268,6 +272,36 @@ export default function AccountsScreen() {
             <Ionicons name="add-outline" size={20} color="#F8FAFC" />
           </TouchableOpacity>
         </View>
+
+        {/* Botón Gratuito: Escáner de Alertas Bancarias y CSV (Wells Fargo, Chase, Truist) */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            backgroundColor: '#052E16',
+            borderWidth: 1,
+            borderColor: '#22C55E',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 14,
+          }}
+          onPress={() => {
+            setSmartImportAccId(accounts[0]?.id || '');
+            setShowSmartImportModal(true);
+          }}
+        >
+          <Ionicons name="flash" size={20} color="#4ADE80" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#4ADE80', fontSize: 13, fontWeight: '800' }}>
+              Importar Gastos de Alerta / SMS / CSV ($0.00 Gratis)
+            </Text>
+            <Text style={{ color: '#86EFAC', fontSize: 11, marginTop: 1 }}>
+              Pega notificaciones de Wells Fargo, Chase, Truist o líneas CSV y se descuentan solas sin pagar $1.50 a Plaid.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#4ADE80" />
+        </TouchableOpacity>
 
         <Text style={styles.helperNote}>
           Conecta tus cuentas de Wells Fargo, Chase, Truist o cualquier banco de EE. UU. Elige cuáles se suman a tu Saldo Total y controla el % de utilización de tus tarjetas de crédito.
@@ -522,6 +556,99 @@ export default function AccountsScreen() {
                 }}
               >
                 <Text style={styles.realPlaidBtnText}>Guardar Saldo Real</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Importación Inteligente de Alertas / SMS / CSV (100% Gratis sin Plaid) */}
+      <Modal visible={showSmartImportModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              ⚡ Importar Alertas o CSV (Wells Fargo, Chase, Truist)
+            </Text>
+            <Text style={styles.modalSub}>
+              100% Gratis ($0.00). Pega aquí una o varias notificaciones/SMS de tu banco, o filas de tu archivo CSV de Wells Fargo, Chase o Truist. La app detecta comercio, monto, ícono y banco automáticamente.
+            </Text>
+
+            <Text style={styles.inputLabel}>Cuenta por defecto (si la alerta no dice los 4 dígitos)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+              {accounts.map((acc) => (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={[
+                    styles.chip,
+                    smartImportAccId === acc.id && {
+                      borderColor: '#4ADE80',
+                      backgroundColor: '#14532D',
+                    },
+                  ]}
+                  onPress={() => setSmartImportAccId(acc.id)}
+                >
+                  <Text style={styles.chipText}>{acc.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+              <Text style={styles.inputLabel}>Pega tus alertas o líneas CSV aquí:</Text>
+              <TouchableOpacity
+                onPress={() =>
+                  setSmartImportText(
+                    `Wells Fargo: Purchase of $42.50 at Walmart with card ending 3319\nChase: You made a $19.99 transaction with STEAM GAMES on card 4829\nTruist Alert: A $15.49 transaction at NETFLIX was posted to account 6104`
+                  )
+                }
+              >
+                <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>
+                  + Poner Ejemplo
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.input, { height: 110, textAlignVertical: 'top', marginTop: 4 }]}
+              placeholder={
+                'Ejemplos:\n• Chase: You made a $24.50 transaction with AMAZON\n• Wells Fargo: Purchase of $45.00 at PUBLIX\n• O escribe rápido: "Walmart $38.20"'
+              }
+              placeholderTextColor="#64748B"
+              multiline
+              value={smartImportText}
+              onChangeText={setSmartImportText}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                style={[styles.closeModalBtn, { flex: 1, marginTop: 0 }]}
+                onPress={() => setShowSmartImportModal(false)}
+              >
+                <Text style={styles.closeModalBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.realPlaidBtn, { flex: 1, marginBottom: 0 }]}
+                onPress={async () => {
+                  const imported = await importBankMovementsText(
+                    smartImportText,
+                    smartImportAccId || accounts[0]?.id
+                  );
+                  if (imported > 0) {
+                    setSmartImportText('');
+                    setShowSmartImportModal(false);
+                    Alert.alert(
+                      '✓ Movimientos Aplicados',
+                      `Se procesaron ${imported} movimientos automáticamente y se actualizaron tus saldos.`
+                    );
+                  } else {
+                    Alert.alert(
+                      'No se detectaron montos',
+                      'Asegúrate de que el texto incluya el signo de dólar (ej. $25.00).'
+                    );
+                  }
+                }}
+              >
+                <Text style={styles.realPlaidBtnText}>Procesar Gastos</Text>
               </TouchableOpacity>
             </View>
           </View>

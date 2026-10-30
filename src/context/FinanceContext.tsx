@@ -24,6 +24,7 @@ import {
   connectPlaidInstitutionLive,
 } from '../services/plaidService';
 import { syncRecurringNotifications } from '../services/notificationService';
+import { matchAccountForAlert, parseBankAlertsOrCsv } from '../services/bankAutoImportService';
 
 export interface AppBackupPayload {
   version: number;
@@ -102,6 +103,7 @@ interface FinanceContextType {
   deleteLoanRecord: (loanId: string) => Promise<void>;
   // Transacciones y Transferencias
   addTransaction: (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => Promise<void>;
+  importBankMovementsText: (rawText: string, defaultAccountId?: string) => Promise<number>;
   transferBetweenAccounts: (params: TransferParams) => Promise<void>;
   deleteTransaction: (txId: string) => Promise<void>;
   // Recurrentes y Recordatorios en Android
@@ -715,6 +717,33 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // --- TRANSACCIONES Y TRANSFERENCIAS ---
+  const importBankMovementsText = async (
+    rawText: string,
+    defaultAccountId?: string
+  ): Promise<number> => {
+    const parsedList = parseBankAlertsOrCsv(rawText);
+    if (parsedList.length === 0 || accounts.length === 0) return 0;
+
+    let count = 0;
+    for (const item of parsedList) {
+      const targetAccId = matchAccountForAlert(accounts, item.detectedBankHint, defaultAccountId);
+      if (!targetAccId) continue;
+
+      await addTransaction({
+        accountId: targetAccId,
+        categoryId: item.categoryId,
+        type: item.type,
+        amount: item.amount,
+        fee: 0,
+        description: item.description,
+        merchantName: item.merchantName,
+        date: item.date,
+      });
+      count++;
+    }
+    return count;
+  };
+
   const addTransaction = async (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => {
     const db = await getDb();
     const id = `tx-${Date.now()}`;
@@ -1202,6 +1231,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         registerLoanPayment,
         deleteLoanRecord,
         addTransaction,
+        importBankMovementsText,
         transferBetweenAccounts,
         deleteTransaction,
         addRecurringItem,
