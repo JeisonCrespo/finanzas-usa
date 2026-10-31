@@ -96,6 +96,22 @@ export default function AccountsScreen() {
   const [transferFee, setTransferFee] = useState('');
   const [transferNote, setTransferNote] = useState('');
 
+  // Ocultar / Colapsar cuentas ajenas al fondo
+  const [hideOtherAccounts, setHideOtherAccounts] = useState(false);
+
+  // Separar cuentas mías vs cuentas ajenas / separadas
+  const myAccounts = useMemo(() => {
+    return accounts.filter(
+      (a) => a.includeInTotal && (!a.ownerName || a.ownerName.toLowerCase().includes('mío'))
+    );
+  }, [accounts]);
+
+  const otherAccounts = useMemo(() => {
+    return accounts.filter(
+      (a) => !a.includeInTotal || (a.ownerName && !a.ownerName.toLowerCase().includes('mío'))
+    );
+  }, [accounts]);
+
   // Cuentas separadas (no tarjetas de crédito) o con dueño específico
   const separatedAccounts = accounts.filter(
     (a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName?.trim())
@@ -218,6 +234,214 @@ export default function AccountsScreen() {
       date: new Date().toISOString().split('T')[0],
     });
     setShowTransferModal(false);
+  };
+
+  const renderAccountCard = (acc: BankAccount) => {
+    const isCredit = acc.type === 'credit';
+    const limit = acc.creditLimit || 0;
+    const used = Math.abs(acc.balance);
+    const utilizationPct = limit > 0 ? (used / limit) * 100 : 0;
+
+    return (
+      <View
+        key={acc.id}
+        style={[
+          styles.accountCard,
+          !acc.includeInTotal && styles.accountCardExcluded,
+        ]}
+      >
+        <View style={styles.accountTopRow}>
+          <View style={[styles.bankBadge, { backgroundColor: acc.color }]}>
+            <Ionicons
+              name={
+                isCredit
+                  ? 'card-outline'
+                  : acc.institution.toLowerCase().includes('paypal')
+                  ? 'logo-paypal'
+                  : acc.institution.toLowerCase().includes('uber')
+                  ? 'car-sport-outline'
+                  : acc.isPlaidConnected
+                  ? 'shield-checkmark-outline'
+                  : 'wallet-outline'
+              }
+              size={20}
+              color="#FFF"
+            />
+          </View>
+
+          <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={styles.accountName} numberOfLines={1} ellipsizeMode="tail">{acc.name}</Text>
+              {acc.mask && <Text style={styles.accountMask}>•••• {acc.mask}</Text>}
+            </View>
+            <Text style={styles.accountInstitution} numberOfLines={1} ellipsizeMode="tail">
+              {acc.institution} •{' '}
+              {isCredit
+                ? 'Tarjeta de Crédito US'
+                : acc.type === 'savings'
+                ? 'Savings / Ahorros'
+                : 'Checking / Balance'}
+            </Text>
+
+            {/* Etiqueta de dueño del dinero cuando tiene ownerName o está separada */}
+            {(acc.ownerName || (!acc.includeInTotal && !isCredit)) && (
+              <TouchableOpacity
+                style={styles.ownerBadgePill}
+                onPress={() => {
+                  setEditingAccount(acc);
+                  setEditAccName(acc.name);
+                  setEditAccBalance(String(acc.balance));
+                  setEditAccMask(acc.mask || '');
+                  setEditAccOwnerName(acc.ownerName || '');
+                }}
+              >
+                <Ionicons name="person-outline" size={12} color={isDark ? '#E9D5FF' : '#7C3AED'} />
+                <Text style={styles.ownerBadgeText} numberOfLines={1} ellipsizeMode="tail">
+                  {acc.ownerName
+                    ? `Dinero de: ${acc.ownerName}`
+                    : 'Asignar de quién es este dinero'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={{ alignItems: 'flex-end', minWidth: 70 }}>
+            <Text style={styles.accountBalance} numberOfLines={1} adjustsFontSizeToFit>
+              ${acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </Text>
+            {isCredit && (
+              <Text style={styles.creditSubTag} numberOfLines={1}>Saldo usado</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Panel de Control de Tarjeta de Crédito (Corte, Pago y % Utilización FICO) */}
+        {isCredit && (
+          <View style={styles.creditBox}>
+            <View style={styles.creditHeaderRow}>
+              <Text style={styles.creditDatesText}>
+                Corte (Closing):{' '}
+                <Text style={styles.creditHighlight}>
+                  {acc.closingDay ? `Día ${acc.closingDay}` : 'Sin definir'}
+                </Text>{' '}
+                • Pago (Due):{' '}
+                <Text style={styles.creditHighlight}>
+                  {acc.dueDay ? `Día ${acc.dueDay}` : 'Sin definir'}
+                </Text>
+              </Text>
+
+              <TouchableOpacity
+                style={styles.editCreditBtn}
+                onPress={() => {
+                  setEditingCard(acc);
+                  setEditLimit(limit > 0 ? String(limit) : '');
+                  setEditClosing(acc.closingDay ? String(acc.closingDay) : '');
+                  setEditDue(acc.dueDay ? String(acc.dueDay) : '');
+                }}
+              >
+                <Text style={styles.editCreditBtnText}>Editar Fechas/Límite</Text>
+              </TouchableOpacity>
+            </View>
+
+            {limit > 0 && (
+              <>
+                <View style={styles.creditUtilRow}>
+                  <Text style={styles.creditUtilLabel}>
+                    Límite: ${limit.toLocaleString()} • Disponible: $
+                    {Math.max(0, limit - used).toLocaleString()}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.creditUtilPct,
+                      {
+                        color:
+                          utilizationPct > 30
+                            ? '#EF4444'
+                            : utilizationPct > 10
+                            ? '#F59E0B'
+                            : '#22C55E',
+                      },
+                    ]}
+                  >
+                    Utilización: {utilizationPct.toFixed(1)}%{' '}
+                    {utilizationPct <= 30 ? '(Óptimo FICO)' : '(Alto >30%)'}
+                  </Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.min(utilizationPct, 100)}%`,
+                        backgroundColor:
+                          utilizationPct > 30
+                            ? '#EF4444'
+                            : utilizationPct > 10
+                            ? '#F59E0B'
+                            : '#22C55E',
+                      },
+                    ]}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        <View style={styles.accountFooter}>
+          <View style={styles.switchRow}>
+            <Switch
+              value={acc.includeInTotal}
+              onValueChange={() => toggleAccountIncludeInTotal(acc.id)}
+              trackColor={{ false: '#334155', true: '#0284C7' }}
+              thumbColor={acc.includeInTotal ? '#38BDF8' : '#94A3B8'}
+            />
+            <Text
+              style={[
+                styles.switchLabel,
+                { color: acc.includeInTotal ? (isDark ? '#38BDF8' : '#0284C7') : (isDark ? '#C084FC' : '#7C3AED') },
+              ]}
+            >
+              {acc.includeInTotal
+                ? 'Incluida en mi Saldo Total'
+                : `Separada${acc.ownerName ? ` (${acc.ownerName})` : ''}`}
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                backgroundColor: isDark ? '#1E293B' : '#E0F2FE',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: isDark ? '#334155' : '#BAE6FD',
+              }}
+              onPress={() => {
+                setEditingAccount(acc);
+                setEditAccName(acc.name);
+                setEditAccBalance(String(acc.balance));
+                setEditAccMask(acc.mask || '');
+                setEditAccOwnerName(acc.ownerName || '');
+              }}
+            >
+              <Ionicons name="create-outline" size={14} color={isDark ? '#38BDF8' : '#0284C7'} />
+              <Text style={{ color: isDark ? '#38BDF8' : '#0284C7', fontSize: 11, fontWeight: '700' }}>
+                Editar / Dueño
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => deleteAccount(acc.id)}>
+              <Ionicons name="trash-outline" size={18} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -348,213 +572,58 @@ export default function AccountsScreen() {
           Administra tus cuentas de Wells Fargo, Chase, Truist, PayPal, Uber y más. En las cuentas separadas puedes anotar de quién es ese dinero para no mezclarlo con el tuyo.
         </Text>
 
-        {/* Lista de Cuentas y Tarjetas de Crédito */}
-        {accounts.map((acc) => {
-          const isCredit = acc.type === 'credit';
-          const limit = acc.creditLimit || 0;
-          const used = Math.abs(acc.balance);
-          const utilizationPct = limit > 0 ? (used / limit) * 100 : 0;
+        {/* Cuentas Personales */}
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            Mis Cuentas ({myAccounts.length})
+          </Text>
+          {myAccounts.map(renderAccountCard)}
+          {myAccounts.length === 0 && (
+            <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 12, fontStyle: 'italic', marginVertical: 8 }}>
+              No tienes cuentas personales configuradas.
+            </Text>
+          )}
+        </View>
 
-          return (
-            <View
-              key={acc.id}
-              style={[
-                styles.accountCard,
-                !acc.includeInTotal && styles.accountCardExcluded,
-              ]}
+        {/* Cuentas Separadas / Dinero de Terceros (Al fondo y con toggle para ocultar/mostrar) */}
+        {otherAccounts.length > 0 && (
+          <View style={{ marginTop: 8, marginBottom: 20 }}>
+            <TouchableOpacity
+              onPress={() => setHideOtherAccounts(!hideOtherAccounts)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: isDark ? '#4338CA' : '#DDD6FE',
+                marginBottom: 10,
+              }}
             >
-              <View style={styles.accountTopRow}>
-                <View style={[styles.bankBadge, { backgroundColor: acc.color }]}>
-                  <Ionicons
-                    name={
-                      isCredit
-                        ? 'card-outline'
-                        : acc.institution.toLowerCase().includes('paypal')
-                        ? 'logo-paypal'
-                        : acc.institution.toLowerCase().includes('uber')
-                        ? 'car-sport-outline'
-                        : acc.isPlaidConnected
-                        ? 'shield-checkmark-outline'
-                        : 'wallet-outline'
-                    }
-                    size={20}
-                    color="#FFF"
-                  />
-                </View>
-
-                <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <Text style={styles.accountName} numberOfLines={1} ellipsizeMode="tail">{acc.name}</Text>
-                    {acc.mask && <Text style={styles.accountMask}>•••• {acc.mask}</Text>}
-                  </View>
-                  <Text style={styles.accountInstitution} numberOfLines={1} ellipsizeMode="tail">
-                    {acc.institution} •{' '}
-                    {isCredit
-                      ? 'Tarjeta de Crédito US'
-                      : acc.type === 'savings'
-                      ? 'Savings / Ahorros'
-                      : 'Checking / Balance'}
-                  </Text>
-
-                  {/* Etiqueta de dueño del dinero cuando tiene ownerName o está separada */}
-                  {(acc.ownerName || (!acc.includeInTotal && !isCredit)) && (
-                    <TouchableOpacity
-                      style={styles.ownerBadgePill}
-                      onPress={() => {
-                        setEditingAccount(acc);
-                        setEditAccName(acc.name);
-                        setEditAccBalance(String(acc.balance));
-                        setEditAccMask(acc.mask || '');
-                        setEditAccOwnerName(acc.ownerName || '');
-                      }}
-                    >
-                      <Ionicons name="person-outline" size={12} color="#E9D5FF" />
-                      <Text style={styles.ownerBadgeText} numberOfLines={1} ellipsizeMode="tail">
-                        {acc.ownerName
-                          ? `Dinero de: ${acc.ownerName}`
-                          : 'Asignar de quién es este dinero'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                <View style={{ alignItems: 'flex-end', minWidth: 70 }}>
-                  <Text style={styles.accountBalance} numberOfLines={1} adjustsFontSizeToFit>
-                    ${acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </Text>
-                  {isCredit && (
-                    <Text style={styles.creditSubTag} numberOfLines={1}>Saldo usado</Text>
-                  )}
-                </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="people-outline" size={16} color={isDark ? '#A78BFA' : '#7C3AED'} />
+                <Text style={{ fontSize: 13, fontWeight: '800', color: isDark ? '#C4B5FD' : '#6D28D9' }}>
+                  Cuentas Separadas / Dinero Ajeno ({otherAccounts.length})
+                </Text>
               </View>
-
-              {/* Panel de Control de Tarjeta de Crédito (Corte, Pago y % Utilización FICO) */}
-              {isCredit && (
-                <View style={styles.creditBox}>
-                  <View style={styles.creditHeaderRow}>
-                    <Text style={styles.creditDatesText}>
-                      Corte (Closing):{' '}
-                      <Text style={styles.creditHighlight}>
-                        {acc.closingDay ? `Día ${acc.closingDay}` : 'Sin definir'}
-                      </Text>{' '}
-                      • Pago (Due):{' '}
-                      <Text style={styles.creditHighlight}>
-                        {acc.dueDay ? `Día ${acc.dueDay}` : 'Sin definir'}
-                      </Text>
-                    </Text>
-
-                    <TouchableOpacity
-                      style={styles.editCreditBtn}
-                      onPress={() => {
-                        setEditingCard(acc);
-                        setEditLimit(limit > 0 ? String(limit) : '');
-                        setEditClosing(acc.closingDay ? String(acc.closingDay) : '');
-                        setEditDue(acc.dueDay ? String(acc.dueDay) : '');
-                      }}
-                    >
-                      <Text style={styles.editCreditBtnText}>Configurar Tarjeta</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {limit > 0 && (
-                    <>
-                      <View style={styles.creditUtilRow}>
-                        <Text style={styles.creditUtilLabel}>
-                          Disponible: ${Math.max(0, limit - used).toFixed(2)} de ${limit.toFixed(0)}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.creditUtilPct,
-                            {
-                              color:
-                                utilizationPct > 30
-                                  ? '#F87171'
-                                  : utilizationPct > 10
-                                  ? '#FBBF24'
-                                  : '#4ADE80',
-                            },
-                          ]}
-                        >
-                          Utilización: {utilizationPct.toFixed(1)}%{' '}
-                          {utilizationPct <= 30 ? '(Óptimo FICO)' : '(Alto >30%)'}
-                        </Text>
-                      </View>
-                      <View style={styles.progressTrack}>
-                        <View
-                          style={[
-                            styles.progressFill,
-                            {
-                              width: `${Math.min(utilizationPct, 100)}%`,
-                              backgroundColor:
-                                utilizationPct > 30
-                                  ? '#EF4444'
-                                  : utilizationPct > 10
-                                  ? '#F59E0B'
-                                  : '#22C55E',
-                            },
-                          ]}
-                        />
-                      </View>
-                    </>
-                  )}
-                </View>
-              )}
-
-              <View style={styles.accountFooter}>
-                <View style={styles.switchRow}>
-                  <Switch
-                    value={acc.includeInTotal}
-                    onValueChange={() => toggleAccountIncludeInTotal(acc.id)}
-                    trackColor={{ false: '#334155', true: '#0284C7' }}
-                    thumbColor={acc.includeInTotal ? '#38BDF8' : '#94A3B8'}
-                  />
-                  <Text
-                    style={[
-                      styles.switchLabel,
-                      { color: acc.includeInTotal ? '#38BDF8' : '#C084FC' },
-                    ]}
-                  >
-                    {acc.includeInTotal
-                      ? 'Incluida en mi Saldo Total'
-                      : `Separada${acc.ownerName ? ` (${acc.ownerName})` : ''}`}
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <TouchableOpacity
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                      backgroundColor: '#1E293B',
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: '#334155',
-                    }}
-                    onPress={() => {
-                      setEditingAccount(acc);
-                      setEditAccName(acc.name);
-                      setEditAccBalance(String(acc.balance));
-                      setEditAccMask(acc.mask || '');
-                      setEditAccOwnerName(acc.ownerName || '');
-                    }}
-                  >
-                    <Ionicons name="create-outline" size={14} color="#38BDF8" />
-                    <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>
-                      Editar / Dueño
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={() => deleteAccount(acc.id)}>
-                    <Ionicons name="trash-outline" size={18} color="#64748B" />
-                  </TouchableOpacity>
-                </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons
+                  name={hideOtherAccounts ? 'eye-outline' : 'eye-off-outline'}
+                  size={16}
+                  color={isDark ? '#A78BFA' : '#7C3AED'}
+                />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#A78BFA' : '#7C3AED' }}>
+                  {hideOtherAccounts ? 'Mostrar' : 'Ocultar'}
+                </Text>
               </View>
-            </View>
-          );
-        })}
+            </TouchableOpacity>
+
+            {!hideOtherAccounts && otherAccounts.map(renderAccountCard)}
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal para Editar el Saldo Real, Nombre, Dueño y 4 Dígitos de cualquier Cuenta */}
@@ -614,21 +683,34 @@ export default function AccountsScreen() {
           onChangeText={setEditAccOwnerName}
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
-          {OWNER_QUICK_CHIPS.map((label) => (
-            <TouchableOpacity
-              key={label}
-              style={[
-                styles.chip,
-                editAccOwnerName === label && {
-                  borderColor: '#C084FC',
-                  backgroundColor: '#3B0764',
-                },
-              ]}
-              onPress={() => setEditAccOwnerName(label)}
-            >
-              <Text style={styles.chipText}>{label}</Text>
-            </TouchableOpacity>
-          ))}
+          {OWNER_QUICK_CHIPS.map((label) => {
+            const isSelected = editAccOwnerName === label;
+            return (
+              <TouchableOpacity
+                key={label}
+                style={[
+                  styles.chip,
+                  isSelected && {
+                    borderColor: isDark ? '#C084FC' : '#7C3AED',
+                    backgroundColor: isDark ? '#3B0764' : '#EDE9FE',
+                  },
+                ]}
+                onPress={() => setEditAccOwnerName(label)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSelected && {
+                      color: isDark ? '#E9D5FF' : '#5B21B6',
+                      fontWeight: '700',
+                    },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>

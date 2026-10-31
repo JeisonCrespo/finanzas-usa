@@ -76,6 +76,7 @@ export default function DashboardScreen() {
   // Buscador y Filtro por Mes en Historial (#1 pedido)
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [hideOtherMoney, setHideOtherMoney] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -229,14 +230,50 @@ export default function DashboardScreen() {
 
           {/* Desglose rápido por dueño de cuentas separadas / dinero ajeno (NO sumado al patrimonio) */}
           {accounts.some((a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName)) && (
-            <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#1E293B' }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '700', flex: 1, marginRight: 8 }} numberOfLines={1}>
-                  👤 Dinero ajeno guardado:
-                </Text>
+            <View
+              style={{
+                marginTop: 12,
+                paddingTop: 10,
+                borderTopWidth: 1,
+                borderTopColor: isDark ? '#1E293B' : '#E2E8F0',
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 6,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+                  <Text
+                    style={{
+                      color: isDark ? '#C084FC' : '#7C3AED',
+                      fontSize: 11,
+                      fontWeight: '700',
+                    }}
+                    numberOfLines={1}
+                  >
+                    👤 Dinero ajeno guardado:
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setHideOtherMoney(!hideOtherMoney)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ padding: 2 }}
+                  >
+                    <Ionicons
+                      name={hideOtherMoney ? 'eye-off-outline' : 'eye-outline'}
+                      size={15}
+                      color={isDark ? '#C084FC' : '#7C3AED'}
+                    />
+                  </TouchableOpacity>
+                </View>
                 {otherPeopleTotalBalance > 0 && (
-                  <Text style={{ color: '#E9D5FF', fontSize: 11, fontWeight: '800' }}>
-                    ${otherPeopleTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  <Text style={{ color: isDark ? '#E9D5FF' : '#5B21B6', fontSize: 11, fontWeight: '800' }}>
+                    {hideOtherMoney
+                      ? '••••••'
+                      : `$${otherPeopleTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                   </Text>
                 )}
               </View>
@@ -247,19 +284,25 @@ export default function DashboardScreen() {
                     <View
                       key={sep.id}
                       style={{
-                        backgroundColor: '#1E1B4B',
+                        backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
                         borderWidth: 1,
-                        borderColor: '#4C1D95',
+                        borderColor: isDark ? '#4C1D95' : '#DDD6FE',
                         borderRadius: 8,
                         paddingHorizontal: 10,
                         paddingVertical: 5,
                         maxWidth: '100%',
                       }}
                     >
-                      <Text style={{ color: '#E9D5FF', fontSize: 11, fontWeight: '700' }} numberOfLines={1} ellipsizeMode="tail">
+                      <Text
+                        style={{ color: isDark ? '#E9D5FF' : '#6D28D9', fontSize: 11, fontWeight: '700' }}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
                         {sep.ownerName ? `${sep.ownerName}: ` : `${sep.name}: `}
-                        <Text style={{ color: '#F8FAFC' }}>
-                          ${sep.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        <Text style={{ color: isDark ? '#F8FAFC' : '#1E293B', fontWeight: '800' }}>
+                          {hideOtherMoney
+                            ? '••••••'
+                            : `$${sep.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                         </Text>
                       </Text>
                     </View>
@@ -272,7 +315,10 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.transferQuickBtn,
-                { backgroundColor: '#451A03', borderColor: '#F59E0B' },
+                {
+                  backgroundColor: isDark ? '#451A03' : '#FEF3C7',
+                  borderColor: isDark ? '#F59E0B' : '#FCD34D',
+                },
               ]}
               onPress={() => {
                 setAntAccId(accounts[0]?.id || '');
@@ -283,7 +329,13 @@ export default function DashboardScreen() {
               }}
             >
               <Text style={{ fontSize: 12 }}>🐜</Text>
-              <Text style={[styles.transferQuickText, { color: '#FDE68A' }]} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.transferQuickText,
+                  { color: isDark ? '#FDE68A' : '#92400E' },
+                ]}
+                numberOfLines={1}
+              >
                 Hormiga
               </Text>
             </TouchableOpacity>
@@ -291,7 +343,10 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.transferQuickBtn,
-                { backgroundColor: '#052E16', borderColor: '#22C55E' },
+                {
+                  backgroundColor: isDark ? '#052E16' : '#DCFCE7',
+                  borderColor: isDark ? '#22C55E' : '#86EFAC',
+                },
               ]}
               onPress={() => {
                 setGWalletAccId(accounts[0]?.id || '');
@@ -301,8 +356,14 @@ export default function DashboardScreen() {
                 setShowGWalletModal(true);
               }}
             >
-              <Ionicons name="logo-google" size={13} color="#4ADE80" />
-              <Text style={[styles.transferQuickText, { color: '#4ADE80' }]} numberOfLines={1}>
+              <Ionicons name="logo-google" size={13} color={isDark ? '#4ADE80' : '#15803D'} />
+              <Text
+                style={[
+                  styles.transferQuickText,
+                  { color: isDark ? '#4ADE80' : '#15803D' },
+                ]}
+                numberOfLines={1}
+              >
                 Billetera
               </Text>
             </TouchableOpacity>
@@ -322,11 +383,11 @@ export default function DashboardScreen() {
         {/* Radar de Gastos Hormiga del Mes 🐜 */}
         <View
           style={{
-            backgroundColor: '#1C1917',
+            backgroundColor: isDark ? '#1C1917' : '#FEF3C7',
             borderRadius: 16,
             padding: 13,
             borderWidth: 1,
-            borderColor: '#78350F',
+            borderColor: isDark ? '#78350F' : '#FDE68A',
             marginBottom: 16,
             flexDirection: 'row',
             alignItems: 'center',
@@ -334,10 +395,10 @@ export default function DashboardScreen() {
           }}
         >
           <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={{ color: '#FDE68A', fontSize: 13, fontWeight: '800' }}>
+            <Text style={{ color: isDark ? '#FDE68A' : '#92400E', fontSize: 13, fontWeight: '800' }}>
               🐜 Radar de Gastos Hormiga (Mes actual)
             </Text>
-            <Text style={{ color: '#D6D3D1', fontSize: 11, marginTop: 2 }}>
+            <Text style={{ color: isDark ? '#D6D3D1' : '#78350F', fontSize: 11, marginTop: 2 }}>
               {antExpensesThisMonth.length === 0
                 ? 'Aún no registras cafés, snacks ni antojos este mes.'
                 : `${antExpensesThisMonth.length} antojo(s) este mes • Total acumulado: $${antMonthTotal.toFixed(2)}`}
@@ -1096,28 +1157,38 @@ export default function DashboardScreen() {
             '🎮 Micro-compra / Juego',
             '💵 Propina / Tip',
             '🛵 Delivery / Cargo extra',
-          ].map((preset) => (
-            <TouchableOpacity
-              key={preset}
-              style={[
-                styles.chip,
-                antPreset === preset && {
-                  borderColor: '#F59E0B',
-                  backgroundColor: '#451A03',
-                },
-              ]}
-              onPress={() => setAntPreset(preset)}
-            >
-              <Text style={styles.chipText}>{preset}</Text>
-            </TouchableOpacity>
-          ))}
+          ].map((preset) => {
+            const isSelected = antPreset === preset;
+            return (
+              <TouchableOpacity
+                key={preset}
+                style={[
+                  styles.chip,
+                  isSelected && {
+                    borderColor: '#F59E0B',
+                    backgroundColor: isDark ? '#451A03' : '#FEF3C7',
+                  },
+                ]}
+                onPress={() => setAntPreset(preset)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSelected && { color: isDark ? '#FDE68A' : '#92400E', fontWeight: '700' },
+                  ]}
+                >
+                  {preset}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.inputLabel}>2. Monto ($ USD)</Text>
             <TextInput
-              style={[styles.input, { fontSize: 17, fontWeight: '800', color: '#FDE68A' }]}
+              style={[styles.input, { fontSize: 17, fontWeight: '800', color: isDark ? '#FDE68A' : '#92400E' }]}
               placeholder="Ej. 5.50"
               placeholderTextColor="#64748B"
               keyboardType="decimal-pad"
@@ -1139,40 +1210,61 @@ export default function DashboardScreen() {
 
         <Text style={styles.inputLabel}>O toca un monto rápido:</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
-          {['2.50', '5.00', '7.50', '10.00', '15.00'].map((qAmt) => (
-            <TouchableOpacity
-              key={qAmt}
-              style={[
-                styles.chip,
-                { flex: 1, marginRight: 0, alignItems: 'center' },
-                antAmount === qAmt && { borderColor: '#F59E0B', backgroundColor: '#451A03' },
-              ]}
-              onPress={() => setAntAmount(qAmt)}
-            >
-              <Text style={styles.chipText}>${qAmt}</Text>
-            </TouchableOpacity>
-          ))}
+          {['2.50', '5.00', '7.50', '10.00', '15.00'].map((qAmt) => {
+            const isSelected = antAmount === qAmt;
+            return (
+              <TouchableOpacity
+                key={qAmt}
+                style={[
+                  styles.chip,
+                  { flex: 1, marginRight: 0, alignItems: 'center' },
+                  isSelected && {
+                    borderColor: '#F59E0B',
+                    backgroundColor: isDark ? '#451A03' : '#FEF3C7',
+                  },
+                ]}
+                onPress={() => setAntAmount(qAmt)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSelected && { color: isDark ? '#FDE68A' : '#92400E', fontWeight: '700' },
+                  ]}
+                >
+                  ${qAmt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <Text style={styles.inputLabel}>3. ¿Con qué cuenta o tarjeta pagaste?</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-          {accounts.map((acc) => (
-            <TouchableOpacity
-              key={acc.id}
-              style={[
-                styles.chip,
-                antAccId === acc.id && {
-                  borderColor: '#F59E0B',
-                  backgroundColor: '#451A03',
-                },
-              ]}
-              onPress={() => setAntAccId(acc.id)}
-            >
-              <Text style={styles.chipText}>
-                {acc.name} (${acc.balance.toFixed(0)})
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {accounts.map((acc) => {
+            const isSelected = antAccId === acc.id;
+            return (
+              <TouchableOpacity
+                key={acc.id}
+                style={[
+                  styles.chip,
+                  isSelected && {
+                    borderColor: '#F59E0B',
+                    backgroundColor: isDark ? '#451A03' : '#FEF3C7',
+                  },
+                ]}
+                onPress={() => setAntAccId(acc.id)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSelected && { color: isDark ? '#FDE68A' : '#92400E', fontWeight: '700' },
+                  ]}
+                >
+                  {acc.name} (${acc.balance.toFixed(0)})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         <View style={styles.modalActions}>

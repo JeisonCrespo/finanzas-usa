@@ -103,7 +103,8 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       notes TEXT,
       date TEXT NOT NULL,
       due_date TEXT,
-      is_settled INTEGER NOT NULL DEFAULT 0
+      is_settled INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS installment_debts (
@@ -118,7 +119,11 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       installments_total INTEGER NOT NULL DEFAULT 4,
       installments_paid INTEGER NOT NULL DEFAULT 0,
       color TEXT NOT NULL,
-      icon TEXT NOT NULL
+      icon TEXT NOT NULL,
+      frequency TEXT DEFAULT 'monthly',
+      first_due_date TEXT,
+      reminder_days INTEGER DEFAULT 1,
+      account_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -177,6 +182,11 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN shared_people_count INTEGER NOT NULL DEFAULT 1;`); } catch {}
   try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN my_share_amount REAL DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN reimbursed_this_cycle INTEGER NOT NULL DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE loans ADD COLUMN account_id TEXT;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE installment_debts ADD COLUMN frequency TEXT DEFAULT 'monthly';`); } catch {}
+  try { await db.execAsync(`ALTER TABLE installment_debts ADD COLUMN first_due_date TEXT;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE installment_debts ADD COLUMN reminder_days INTEGER DEFAULT 1;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE installment_debts ADD COLUMN account_id TEXT;`); } catch {}
 
   const initializedFlag = await db.getFirstAsync<{ value: string }>(
     "SELECT value FROM app_settings WHERE key = 'db_seeded'"

@@ -565,11 +565,24 @@ export default function AnalyticsAndBudgetsScreen() {
             {/* Runway / Supervivencia Financiera con tu Sueldo 🧭 */}
             <View style={styles.runwayCard}>
               <View style={styles.runwayHeaderRow}>
-                <View style={[styles.runwayBadgeIcon, { backgroundColor: canSurviveUntilPaycheck ? '#052E16' : '#450A0A' }]}>
+                <View
+                  style={[
+                    styles.runwayBadgeIcon,
+                    {
+                      backgroundColor: canSurviveUntilPaycheck
+                        ? (isDark ? '#052E16' : '#DCFCE7')
+                        : (isDark ? '#450A0A' : '#FEE2E2'),
+                    },
+                  ]}
+                >
                   <Ionicons
                     name={canSurviveUntilPaycheck ? 'shield-checkmark-outline' : 'warning-outline'}
                     size={20}
-                    color={canSurviveUntilPaycheck ? '#4ADE80' : '#F87171'}
+                    color={
+                      canSurviveUntilPaycheck
+                        ? (isDark ? '#4ADE80' : '#16A34A')
+                        : (isDark ? '#F87171' : '#DC2626')
+                    }
                   />
                 </View>
                 <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
@@ -588,14 +601,14 @@ export default function AnalyticsAndBudgetsScreen() {
               <View style={styles.runwayStatsRow}>
                 <View style={styles.runwayStatCol}>
                   <Text style={styles.runwayStatLabel} numberOfLines={1}>SALDO DISPONIBLE</Text>
-                  <Text style={[styles.runwayStatVal, { color: '#38BDF8' }]} numberOfLines={1} adjustsFontSizeToFit>
+                  <Text style={[styles.runwayStatVal, { color: isDark ? '#38BDF8' : '#0284C7' }]} numberOfLines={1} adjustsFontSizeToFit>
                     ${availableFunds.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </Text>
                 </View>
                 <View style={styles.runwayDivider} />
                 <View style={styles.runwayStatCol}>
                   <Text style={styles.runwayStatLabel} numberOfLines={1}>GASTO DIARIO</Text>
-                  <Text style={[styles.runwayStatVal, { color: '#F87171' }]} numberOfLines={1} adjustsFontSizeToFit>
+                  <Text style={[styles.runwayStatVal, { color: isDark ? '#F87171' : '#DC2626' }]} numberOfLines={1} adjustsFontSizeToFit>
                     ${dailyBurnRate.toFixed(2)}/día
                   </Text>
                 </View>
@@ -605,7 +618,7 @@ export default function AnalyticsAndBudgetsScreen() {
                   <Text
                     style={[
                       styles.runwayStatVal,
-                      { color: runwayDays > 15 ? '#4ADE80' : runwayDays >= 7 ? '#FBBF24' : '#F87171' },
+                      { color: runwayDays > 15 ? (isDark ? '#4ADE80' : '#16A34A') : runwayDays >= 7 ? (isDark ? '#FBBF24' : '#D97706') : (isDark ? '#F87171' : '#DC2626') },
                     ]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
@@ -645,15 +658,23 @@ export default function AnalyticsAndBudgetsScreen() {
                 style={[
                   styles.runwayVerdictBox,
                   {
-                    backgroundColor: canSurviveUntilPaycheck ? '#052E16' : '#450A0A',
-                    borderColor: canSurviveUntilPaycheck ? '#166534' : '#991B1B',
+                    backgroundColor: canSurviveUntilPaycheck
+                      ? (isDark ? '#052E16' : '#F0FDF4')
+                      : (isDark ? '#450A0A' : '#FEF2F2'),
+                    borderColor: canSurviveUntilPaycheck
+                      ? (isDark ? '#166534' : '#86EFAC')
+                      : (isDark ? '#991B1B' : '#FECACA'),
                   },
                 ]}
               >
                 <Text
                   style={[
                     styles.runwayVerdictTitle,
-                    { color: canSurviveUntilPaycheck ? '#86EFAC' : '#FCA5A5' },
+                    {
+                      color: canSurviveUntilPaycheck
+                        ? (isDark ? '#86EFAC' : '#15803D')
+                        : (isDark ? '#FCA5A5' : '#B91C1C'),
+                    },
                   ]}
                 >
                   {canSurviveUntilPaycheck
@@ -661,17 +682,26 @@ export default function AnalyticsAndBudgetsScreen() {
                     : `⚠️ Alerta: Te faltarán $${deficitAtPaycheck.toFixed(2)} para llegar a tu sueldo`}
                 </Text>
 
-                <Text style={styles.runwayVerdictDesc}>
+                <Text
+                  style={[
+                    styles.runwayVerdictDesc,
+                    {
+                      color: canSurviveUntilPaycheck
+                        ? (isDark ? '#E2E8F0' : '#166534')
+                        : (isDark ? '#E2E8F0' : '#991B1B'),
+                    },
+                  ]}
+                >
                   {canSurviveUntilPaycheck
                     ? `A tu ritmo de gasto actual ($${dailyBurnRate.toFixed(2)}/día), tu saldo te durará ${runwayDays >= 999 ? '+90' : runwayDays} días. Al día del sueldo te quedarán aproximadamente $${leftoverAtPaycheck.toFixed(2)} de colchón.`
                     : `A tu ritmo de gasto actual ($${dailyBurnRate.toFixed(2)}/día), tu saldo se agotará en ${runwayDays} días, pero aún faltan ${daysToNextPaycheck} días para cobrar tu sueldo. Para sobrevivir hasta ese día, tu gasto diario máximo no debe superar $${safeDailyBudget.toFixed(2)}/día.`}
                 </Text>
 
                 <View style={styles.runwaySafeBudgetRow}>
-                  <Ionicons name="calculator-outline" size={16} color="#FDE68A" />
-                  <Text style={styles.runwaySafeBudgetText}>
+                  <Ionicons name="calculator-outline" size={16} color={isDark ? '#FDE68A' : '#B45309'} />
+                  <Text style={[styles.runwaySafeBudgetText, { color: isDark ? '#FDE68A' : '#92400E' }]}>
                     Gasto diario máximo recomendado:{' '}
-                    <Text style={{ fontWeight: '800', color: '#FBBF24' }}>
+                    <Text style={{ fontWeight: '800', color: isDark ? '#FBBF24' : '#B45309' }}>
                       ${safeDailyBudget.toFixed(2)} / día
                     </Text>
                   </Text>

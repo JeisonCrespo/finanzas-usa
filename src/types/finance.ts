@@ -69,6 +69,7 @@ export interface LoanRecord {
   date: string;
   dueDate?: string;
   isSettled: boolean;
+  accountId?: string; // Cuenta bancaria de donde se prestó o a donde entró
 }
 
 export interface InstallmentDebt {
@@ -84,6 +85,10 @@ export interface InstallmentDebt {
   installmentsPaid: number; // Cuotas pagadas hasta ahora
   color: string;
   icon: string;
+  frequency?: 'monthly' | 'biweekly' | 'weekly'; // Cada mes, cada 15 días, semanal
+  firstDueDate?: string; // Primera fecha de pago (YYYY-MM-DD)
+  reminderDaysBefore?: number; // Notificación: 1 o 2 días antes
+  accountId?: string; // Cuenta bancaria vinculada para pagar
 }
 
 export interface Transaction {

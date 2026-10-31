@@ -15,6 +15,8 @@ import { useFinance } from '../../src/context/FinanceContext';
 import {
   DebtPayoffStrategy,
   LoanDirection,
+  LoanRecord,
+  InstallmentDebt,
   RecurrenceFrequency,
   RecurringItem,
 } from '../../src/types/finance';
@@ -33,6 +35,47 @@ const BNPL_PLATFORMS = [
   { name: 'Zip / Quadpay', color: '#8B5CF6', icon: 'flash-outline' },
   { name: 'Tarjeta / Cuotas', color: '#EF4444', icon: 'card-outline' },
 ];
+
+export const calculateProjectedDates = (
+  firstDateStr: string,
+  freq: 'monthly' | 'biweekly' | 'weekly',
+  totalInst: number,
+  paidInst: number
+) => {
+  if (!firstDateStr || !firstDateStr.includes('-')) return [];
+  const parts = firstDateStr.split('-').map(Number);
+  if (parts.length !== 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return [];
+
+  const projected: { installmentNumber: number; dateStr: string; label: string }[] = [];
+  const remainingCount = Math.max(0, totalInst - paidInst);
+
+  for (let i = 0; i < remainingCount; i++) {
+    const instNumber = paidInst + i + 1;
+    const baseDate = new Date(parts[0], parts[1] - 1, parts[2]);
+
+    if (freq === 'monthly') {
+      baseDate.setMonth(baseDate.getMonth() + i);
+    } else if (freq === 'biweekly') {
+      baseDate.setDate(baseDate.getDate() + i * 15);
+    } else if (freq === 'weekly') {
+      baseDate.setDate(baseDate.getDate() + i * 7);
+    }
+
+    const y = baseDate.getFullYear();
+    const m = String(baseDate.getMonth() + 1).padStart(2, '0');
+    const d = String(baseDate.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+    const label = baseDate.toLocaleDateString('es-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    projected.push({ installmentNumber: instNumber, dateStr, label });
+  }
+
+  return projected;
+};
 
 export default function ControlScreen() {
   const { colors, isDark } = useTheme();
@@ -53,9 +96,11 @@ export default function ControlScreen() {
     skipRecurringCycle,
     deleteRecurringItem,
     addLoanRecord,
+    updateLoanRecord,
     registerLoanPayment,
     deleteLoanRecord,
     addInstallmentDebt,
+    updateInstallmentDebt,
     registerInstallmentPayment,
     deleteInstallmentDebt,
     addSavingsGoal,
@@ -106,6 +151,7 @@ export default function ControlScreen() {
   const [payoffStrategy, setPayoffStrategy] = useState<DebtPayoffStrategy>('snowball');
   const [extraMonthlySnowball, setExtraMonthlySnowball] = useState('');
   const [showAddDebtModal, setShowAddDebtModal] = useState(false);
+  const [editingDebt, setEditingDebt] = useState<InstallmentDebt | null>(null);
   const [debtTitle, setDebtTitle] = useState('');
   const [debtPlatform, setDebtPlatform] = useState('Affirm');
   const [debtTotalAmount, setDebtTotalAmount] = useState('');
@@ -117,6 +163,17 @@ export default function ControlScreen() {
   const [debtInstPaid, setDebtInstPaid] = useState('0');
   const [debtColor, setDebtColor] = useState('#4F46E5');
   const [debtIcon, setDebtIcon] = useState('card-outline');
+  const [debtFrequency, setDebtFrequency] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly');
+  const [debtFirstDueDate, setDebtFirstDueDate] = useState(new Date().toISOString().split('T')[0]);
+  const [debtReminderDays, setDebtReminderDays] = useState<number>(1);
+  const [debtAccountId, setDebtAccountId] = useState<string>('');
+
+  // Proyección automática de cuotas y fechas calculadas en el calendario
+  const projectedDates = useMemo(() => {
+    const tot = parseInt(debtInstTotal, 10) || 4;
+    const paid = parseInt(debtInstPaid, 10) || 0;
+    return calculateProjectedDates(debtFirstDueDate, debtFrequency, tot, paid);
+  }, [debtFirstDueDate, debtFrequency, debtInstTotal, debtInstPaid]);
 
   // Modal Abonar Cuota a Deuda Affirm / Klarna
   const [payingDebtId, setPayingDebtId] = useState<string | null>(null);
@@ -125,12 +182,78 @@ export default function ControlScreen() {
 
   // --- Estados Préstamos (Me deben / Yo debo) ---
   const [showLoanModal, setShowLoanModal] = useState(false);
+  const [editingLoan, setEditingLoan] = useState<LoanRecord | null>(null);
   const [personName, setPersonName] = useState('');
   const [loanDirection, setLoanDirection] = useState<LoanDirection>('lent');
   const [loanAmount, setLoanAmount] = useState('');
   const [loanNotes, setLoanNotes] = useState('');
+  const [loanDueDate, setLoanDueDate] = useState('');
+  const [loanAccountId, setLoanAccountId] = useState('');
   const [payingLoanId, setPayingLoanId] = useState<string | null>(null);
   const [loanPaymentInput, setLoanPaymentInput] = useState('');
+  const [loanPayAccountId, setLoanPayAccountId] = useState('');
+
+  const openNewDebtModal = () => {
+    setEditingDebt(null);
+    setDebtTitle('');
+    setDebtPlatform('Affirm');
+    setDebtTotalAmount('');
+    setDebtRemaining('');
+    setDebtMinPayment('');
+    setDebtInterestApr('0');
+    setDebtDueDates('');
+    setDebtInstTotal('4');
+    setDebtInstPaid('0');
+    setDebtColor('#4F46E5');
+    setDebtIcon('card-outline');
+    setDebtFrequency('monthly');
+    setDebtFirstDueDate(new Date().toISOString().split('T')[0]);
+    setDebtReminderDays(1);
+    setDebtAccountId(accounts[0]?.id || '');
+    setShowAddDebtModal(true);
+  };
+
+  const openEditDebtModal = (debt: InstallmentDebt) => {
+    setEditingDebt(debt);
+    setDebtTitle(debt.title);
+    setDebtPlatform(debt.platform);
+    setDebtTotalAmount(String(debt.totalAmount));
+    setDebtRemaining(String(debt.remainingBalance));
+    setDebtMinPayment(String(debt.minimumPayment));
+    setDebtInterestApr(String(debt.interestRate));
+    setDebtDueDates(debt.dueDates);
+    setDebtInstTotal(String(debt.installmentsTotal));
+    setDebtInstPaid(String(debt.installmentsPaid));
+    setDebtColor(debt.color);
+    setDebtIcon(debt.icon);
+    setDebtFrequency(debt.frequency || 'monthly');
+    setDebtFirstDueDate(debt.firstDueDate || new Date().toISOString().split('T')[0]);
+    setDebtReminderDays(debt.reminderDaysBefore ?? 1);
+    setDebtAccountId(debt.accountId || '');
+    setShowAddDebtModal(true);
+  };
+
+  const openNewLoanModal = () => {
+    setEditingLoan(null);
+    setPersonName('');
+    setLoanDirection('lent');
+    setLoanAmount('');
+    setLoanNotes('');
+    setLoanDueDate('');
+    setLoanAccountId(accounts[0]?.id || '');
+    setShowLoanModal(true);
+  };
+
+  const openEditLoanModal = (loan: LoanRecord) => {
+    setEditingLoan(loan);
+    setPersonName(loan.personName);
+    setLoanDirection(loan.direction);
+    setLoanAmount(String(loan.totalAmount));
+    setLoanNotes(loan.notes || '');
+    setLoanDueDate(loan.dueDate || '');
+    setLoanAccountId(loan.accountId || '');
+    setShowLoanModal(true);
+  };
 
   // --- Estados Metas de Ahorro ---
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -200,28 +323,54 @@ export default function ControlScreen() {
       return;
     }
 
-    await addInstallmentDebt({
-      title: debtTitle.trim(),
-      platform: debtPlatform,
-      totalAmount: !isNaN(orig) && orig >= rem ? orig : rem,
-      remainingBalance: rem,
-      minimumPayment: minP > 0 ? minP : Number((rem / Math.max(1, totInst - paidInst)).toFixed(2)),
-      interestRate: apr,
-      dueDates: debtDueDates.trim() || 'Mensual',
-      installmentsTotal: totInst,
-      installmentsPaid: paidInst,
-      color: debtColor,
-      icon: debtIcon,
-    });
+    const freqLabel =
+      debtFrequency === 'monthly' ? 'Cada Mes' : debtFrequency === 'biweekly' ? 'Cada 15 Días' : 'Semanal';
+    const autoDueDates =
+      debtDueDates.trim() || `${freqLabel} (Próx: ${debtFirstDueDate})`;
 
-    setDebtTitle('');
-    setDebtTotalAmount('');
-    setDebtRemaining('');
-    setDebtMinPayment('');
-    setDebtInterestApr('0');
-    setDebtDueDates('');
-    setDebtInstTotal('4');
-    setDebtInstPaid('0');
+    const finalTotal = !isNaN(orig) && orig >= rem ? orig : rem;
+    const finalMinPayment =
+      minP > 0 ? minP : Number((rem / Math.max(1, totInst - paidInst)).toFixed(2));
+
+    if (editingDebt) {
+      await updateInstallmentDebt(editingDebt.id, {
+        title: debtTitle.trim(),
+        platform: debtPlatform,
+        totalAmount: finalTotal,
+        remainingBalance: rem,
+        minimumPayment: finalMinPayment,
+        interestRate: apr,
+        dueDates: autoDueDates,
+        installmentsTotal: totInst,
+        installmentsPaid: paidInst,
+        color: debtColor,
+        icon: debtIcon,
+        frequency: debtFrequency,
+        firstDueDate: debtFirstDueDate,
+        reminderDaysBefore: debtReminderDays,
+        accountId: debtAccountId || undefined,
+      });
+    } else {
+      await addInstallmentDebt({
+        title: debtTitle.trim(),
+        platform: debtPlatform,
+        totalAmount: finalTotal,
+        remainingBalance: rem,
+        minimumPayment: finalMinPayment,
+        interestRate: apr,
+        dueDates: autoDueDates,
+        installmentsTotal: totInst,
+        installmentsPaid: paidInst,
+        color: debtColor,
+        icon: debtIcon,
+        frequency: debtFrequency,
+        firstDueDate: debtFirstDueDate,
+        reminderDaysBefore: debtReminderDays,
+        accountId: debtAccountId || undefined,
+      });
+    }
+
+    setEditingDebt(null);
     setShowAddDebtModal(false);
   };
 
@@ -229,16 +378,30 @@ export default function ControlScreen() {
     const parsed = parseFloat(loanAmount);
     if (!personName.trim() || !parsed || parsed <= 0) return;
 
-    await addLoanRecord({
-      personName: personName.trim(),
-      direction: loanDirection,
-      totalAmount: parsed,
-      notes: loanNotes.trim() || undefined,
-      date: new Date().toISOString().split('T')[0],
-    });
-    setPersonName('');
-    setLoanAmount('');
-    setLoanNotes('');
+    if (editingLoan) {
+      await updateLoanRecord(editingLoan.id, {
+        personName: personName.trim(),
+        direction: loanDirection,
+        totalAmount: parsed,
+        paidAmount: editingLoan.paidAmount,
+        notes: loanNotes.trim() || undefined,
+        date: editingLoan.date,
+        dueDate: loanDueDate.trim() || undefined,
+        accountId: loanAccountId || undefined,
+        isSettled: editingLoan.paidAmount >= parsed,
+      });
+    } else {
+      await addLoanRecord({
+        personName: personName.trim(),
+        direction: loanDirection,
+        totalAmount: parsed,
+        notes: loanNotes.trim() || undefined,
+        date: new Date().toISOString().split('T')[0],
+        dueDate: loanDueDate.trim() || undefined,
+        accountId: loanAccountId || undefined,
+      });
+    }
+    setEditingLoan(null);
     setShowLoanModal(false);
   };
 
@@ -823,7 +986,7 @@ export default function ControlScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.newBtn}
-                onPress={() => setShowAddDebtModal(true)}
+                onPress={openNewDebtModal}
               >
                 <Ionicons name="add" size={18} color="#0F172A" />
                 <Text style={styles.newBtnText}>Agregar Cuota / Affirm</Text>
@@ -924,10 +1087,17 @@ export default function ControlScreen() {
                               </Text>
                             </View>
                           )}
+                          {debt.frequency && (
+                            <View style={[styles.freqBadge, { backgroundColor: isDark ? '#1E293B' : '#E0F2FE' }]}>
+                              <Text style={[styles.freqBadgeText, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
+                                {debt.frequency === 'monthly' ? 'Mensual' : debt.frequency === 'biweekly' ? 'Cada 15d' : 'Semanal'}
+                              </Text>
+                            </View>
+                          )}
                         </View>
 
                         <Text style={styles.itemSub} numberOfLines={1} ellipsizeMode="tail">
-                          📅 Fechas de pago: <Text style={{ color: '#F8FAFC', fontWeight: '700' }}>{debt.dueDates}</Text>
+                          📅 Fechas de pago: <Text style={{ color: colors.text, fontWeight: '700' }}>{debt.dueDates}</Text>
                         </Text>
                         <Text style={styles.dueText} numberOfLines={1} ellipsizeMode="tail">
                           Pago mínimo / cuota:{' '}
@@ -939,6 +1109,11 @@ export default function ControlScreen() {
                             : ''}{' '}
                           • Cuotas: {debt.installmentsPaid}/{debt.installmentsTotal}
                         </Text>
+                        {Boolean(debt.accountId) && (
+                          <Text style={{ color: isDark ? '#A78BFA' : '#7C3AED', fontSize: 10, fontWeight: '700', marginTop: 2 }}>
+                            💳 Cuenta: {accounts.find((a) => a.id === debt.accountId)?.name || 'Vinculada'}
+                          </Text>
+                        )}
                       </View>
 
                       <View style={{ alignItems: 'flex-end', minWidth: 70 }}>
@@ -955,12 +1130,14 @@ export default function ControlScreen() {
                         <Text style={{ color: '#64748B', fontSize: 10 }}>
                           de ${debt.totalAmount.toFixed(2)}
                         </Text>
-                        <TouchableOpacity
-                          style={{ marginTop: 6 }}
-                          onPress={() => deleteInstallmentDebt(debt.id)}
-                        >
-                          <Ionicons name="trash-outline" size={16} color="#64748B" />
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                          <TouchableOpacity onPress={() => openEditDebtModal(debt)}>
+                            <Ionicons name="create-outline" size={17} color={isDark ? '#38BDF8' : '#0284C7'} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => deleteInstallmentDebt(debt.id)}>
+                            <Ionicons name="trash-outline" size={16} color="#64748B" />
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     </View>
 
@@ -1036,7 +1213,7 @@ export default function ControlScreen() {
               <Text style={styles.sectionTitle}>Registro de Préstamos ({loans.length})</Text>
               <TouchableOpacity
                 style={styles.newBtn}
-                onPress={() => setShowLoanModal(true)}
+                onPress={openNewLoanModal}
               >
                 <Ionicons name="add" size={18} color="#0F172A" />
                 <Text style={styles.newBtnText}>Anote Préstamo</Text>
@@ -1059,7 +1236,7 @@ export default function ControlScreen() {
                     </View>
 
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <Text style={styles.itemTitle}>{loan.personName}</Text>
                         <View
                           style={[
@@ -1085,6 +1262,16 @@ export default function ControlScreen() {
                           {loan.isSettled ? '¡Pagado completo!' : `Faltan $${remaining.toFixed(2)}`}
                         </Text>
                       </Text>
+                      {Boolean(loan.accountId) && (
+                        <Text style={{ color: isDark ? '#A78BFA' : '#7C3AED', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+                          🏦 Cuenta: {accounts.find((a) => a.id === loan.accountId)?.name || 'Asignada'}
+                        </Text>
+                      )}
+                      {Boolean(loan.dueDate) && (
+                        <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>
+                          📅 Promesa / Vencimiento: {loan.dueDate}
+                        </Text>
+                      )}
                     </View>
 
                     <View style={{ alignItems: 'flex-end' }}>
@@ -1096,12 +1283,14 @@ export default function ControlScreen() {
                       >
                         ${remaining.toFixed(2)}
                       </Text>
-                      <TouchableOpacity
-                        style={{ marginTop: 6 }}
-                        onPress={() => deleteLoanRecord(loan.id)}
-                      >
-                        <Ionicons name="trash-outline" size={16} color="#64748B" />
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                        <TouchableOpacity onPress={() => openEditLoanModal(loan)}>
+                          <Ionicons name="create-outline" size={17} color={isDark ? '#38BDF8' : '#0284C7'} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => deleteLoanRecord(loan.id)}>
+                          <Ionicons name="trash-outline" size={16} color="#64748B" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
 
@@ -1322,15 +1511,20 @@ export default function ControlScreen() {
         </View>
       </KeyboardSafeModal>
 
-      {/* Modal Agregar Nueva Deuda / Cuota (Affirm, Klarna, Afterpay, Tarjetas) */}
+      {/* Modal Agregar / Editar Deuda / Cuota (Affirm, Klarna, Afterpay, Tarjetas) */}
       <KeyboardSafeModal
         visible={showAddDebtModal}
         animationType="slide"
-        onClose={() => setShowAddDebtModal(false)}
+        onClose={() => {
+          setShowAddDebtModal(false);
+          setEditingDebt(null);
+        }}
       >
-        <Text style={styles.modalTitle}>Nueva Deuda / Plan de Cuotas (Affirm, Klarna...)</Text>
-        <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 8 }}>
-          Anota tus compras a plazos (Affirm, Klarna, Afterpay, PayPal Pay in 4 o tarjetas) para ver tu barrita de avance y ordenarlas con Bola de Nieve o Avalancha.
+        <Text style={styles.modalTitle}>
+          {editingDebt ? 'Editar Cuota / Deuda BNPL' : 'Nueva Deuda / Plan de Cuotas (Affirm, Klarna...)'}
+        </Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 8 }}>
+          Anota o modifica tus compras a plazos con proyección automática de fechas en el calendario y recordatorios.
         </Text>
 
         <Text style={styles.inputLabel}>Plataforma o Tipo de Deuda</Text>
@@ -1443,10 +1637,212 @@ export default function ControlScreen() {
           </View>
         </View>
 
-        <Text style={styles.inputLabel}>Fecha o Fechas de Pago</Text>
+        {/* Frecuencia de las cuotas */}
+        <Text style={styles.inputLabel}>📅 Frecuencia de los pagos</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+          {[
+            { id: 'monthly' as const, label: 'Cada Mes' },
+            { id: 'biweekly' as const, label: 'Cada 15 Días' },
+            { id: 'weekly' as const, label: 'Semanal' },
+          ].map((f) => {
+            const isSel = debtFrequency === f.id;
+            return (
+              <TouchableOpacity
+                key={f.id}
+                style={[
+                  styles.chip,
+                  { flex: 1, alignItems: 'center' },
+                  isSel && {
+                    borderColor: isDark ? '#38BDF8' : '#0284C7',
+                    backgroundColor: isDark ? '#0C4A6E' : '#E0F2FE',
+                  },
+                ]}
+                onPress={() => setDebtFrequency(f.id)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSel && {
+                      color: isDark ? '#38BDF8' : '#0284C7',
+                      fontWeight: '700',
+                    },
+                  ]}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Primera fecha de pago y presets rápidos */}
+        <Text style={styles.inputLabel}>🗓️ Primera fecha de pago (YYYY-MM-DD)</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ej. Días 15 y 30, Cada 2 viernes, Día 10 de cada mes..."
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#64748B"
+          value={debtFirstDueDate}
+          onChangeText={setDebtFirstDueDate}
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+          {[
+            { label: 'Hoy', days: 0 },
+            { label: '+7 días', days: 7 },
+            { label: '+15 días', days: 15 },
+            { label: '+30 días', days: 30 },
+          ].map((preset) => {
+            const d = new Date();
+            d.setDate(d.getDate() + preset.days);
+            const dateStr = d.toISOString().split('T')[0];
+            const isSel = debtFirstDueDate === dateStr;
+            return (
+              <TouchableOpacity
+                key={preset.label}
+                style={[
+                  styles.chip,
+                  isSel && {
+                    borderColor: '#38BDF8',
+                    backgroundColor: isDark ? '#0C4A6E' : '#E0F2FE',
+                  },
+                ]}
+                onPress={() => setDebtFirstDueDate(dateStr)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSel && { color: isDark ? '#38BDF8' : '#0284C7', fontWeight: '700' },
+                  ]}
+                >
+                  {preset.label} ({dateStr.slice(5)})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Proyección automática de cuotas restantes en el calendario */}
+        {projectedDates.length > 0 && (
+          <View
+            style={{
+              backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
+              borderRadius: 12,
+              padding: 10,
+              borderWidth: 1,
+              borderColor: isDark ? '#334155' : '#E2E8F0',
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Ionicons name="calendar-outline" size={15} color={isDark ? '#38BDF8' : '#0284C7'} />
+              <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? '#38BDF8' : '#0284C7' }}>
+                Proyección Automática ({projectedDates.length} cuotas restantes)
+              </Text>
+            </View>
+            <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6 }}>
+              Fechas calculadas automáticamente según la frecuencia:
+            </Text>
+            <View style={{ gap: 4 }}>
+              {projectedDates.map((p) => {
+                const remVal = parseFloat(debtRemaining) || 0;
+                const estAmount = remVal > 0 ? (remVal / projectedDates.length).toFixed(2) : '0.00';
+                return (
+                  <View
+                    key={p.installmentNumber}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                      paddingVertical: 5,
+                      paddingHorizontal: 8,
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>
+                      Cuota #{p.installmentNumber}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                      {p.label}
+                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: isDark ? '#4ADE80' : '#16A34A' }}>
+                      ${estAmount}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Recordatorio / Notificación */}
+        <Text style={styles.inputLabel}>🔔 Recordatorio en el Teléfono (Notificación)</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+          {[
+            { days: 1, label: '1 día antes' },
+            { days: 2, label: '2 días antes' },
+            { days: 0, label: 'El mismo día' },
+          ].map((opt) => {
+            const isSel = debtReminderDays === opt.days;
+            return (
+              <TouchableOpacity
+                key={opt.days}
+                style={[
+                  styles.chip,
+                  { flex: 1, alignItems: 'center' },
+                  isSel && {
+                    borderColor: '#F59E0B',
+                    backgroundColor: isDark ? '#451A03' : '#FEF3C7',
+                  },
+                ]}
+                onPress={() => setDebtReminderDays(opt.days)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSel && { color: isDark ? '#FDE68A' : '#92400E', fontWeight: '700' },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Cuenta bancaria vinculada */}
+        <Text style={styles.inputLabel}>💳 Cuenta donde se pagan las cuotas (Opcional)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {accounts.map((acc) => {
+            const isSel = debtAccountId === acc.id;
+            return (
+              <TouchableOpacity
+                key={acc.id}
+                style={[
+                  styles.chip,
+                  isSel && {
+                    borderColor: isDark ? '#38BDF8' : '#0284C7',
+                    backgroundColor: isDark ? '#0C4A6E' : '#E0F2FE',
+                  },
+                ]}
+                onPress={() => setDebtAccountId(isSel ? '' : acc.id)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSel && { color: isDark ? '#38BDF8' : '#0284C7', fontWeight: '700' },
+                  ]}
+                >
+                  {acc.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <Text style={styles.inputLabel}>Detalle adicional de Fechas (Opcional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Días 15 y 30, Cada 2 viernes..."
           placeholderTextColor="#64748B"
           value={debtDueDates}
           onChangeText={setDebtDueDates}
@@ -1455,12 +1851,17 @@ export default function ControlScreen() {
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
           <TouchableOpacity
             style={styles.cancelBtn}
-            onPress={() => setShowAddDebtModal(false)}
+            onPress={() => {
+              setShowAddDebtModal(false);
+              setEditingDebt(null);
+            }}
           >
             <Text style={styles.cancelBtnText}>Cancelar</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.saveBtn} onPress={handleSaveInstallmentDebt}>
-            <Text style={styles.saveBtnText}>Guardar Cuota / Deuda</Text>
+            <Text style={styles.saveBtnText}>
+              {editingDebt ? 'Guardar Cambios' : 'Guardar Cuota / Deuda'}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardSafeModal>
@@ -1585,7 +1986,10 @@ export default function ControlScreen() {
       <KeyboardSafeModal
         visible={Boolean(payingLoanId)}
         animationType="fade"
-        onClose={() => setPayingLoanId(null)}
+        onClose={() => {
+          setPayingLoanId(null);
+          setLoanPayAccountId('');
+        }}
       >
         <Text style={styles.modalTitle}>Registrar Abono o Pago Total</Text>
         <Text style={styles.inputLabel}>Monto abonado ($ USD)</Text>
@@ -1595,10 +1999,43 @@ export default function ControlScreen() {
           value={loanPaymentInput}
           onChangeText={setLoanPaymentInput}
         />
+
+        <Text style={styles.inputLabel}>Cuenta donde entra/sale el dinero (Opcional)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {accounts.map((acc) => {
+            const isSel = loanPayAccountId === acc.id;
+            return (
+              <TouchableOpacity
+                key={acc.id}
+                style={[
+                  styles.chip,
+                  isSel && {
+                    borderColor: '#22C55E',
+                    backgroundColor: isDark ? '#14532D' : '#DCFCE7',
+                  },
+                ]}
+                onPress={() => setLoanPayAccountId(isSel ? '' : acc.id)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSel && { color: isDark ? '#86EFAC' : '#15803D', fontWeight: '700' },
+                  ]}
+                >
+                  {acc.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
           <TouchableOpacity
             style={styles.cancelBtn}
-            onPress={() => setPayingLoanId(null)}
+            onPress={() => {
+              setPayingLoanId(null);
+              setLoanPayAccountId('');
+            }}
           >
             <Text style={styles.cancelBtnText}>Cancelar</Text>
           </TouchableOpacity>
@@ -1607,8 +2044,11 @@ export default function ControlScreen() {
             onPress={async () => {
               if (payingLoanId) {
                 const amt = parseFloat(loanPaymentInput);
-                if (amt > 0) await registerLoanPayment(payingLoanId, amt);
+                if (amt > 0) {
+                  await registerLoanPayment(payingLoanId, amt, loanPayAccountId || undefined);
+                }
                 setPayingLoanId(null);
+                setLoanPayAccountId('');
               }
             }}
           >
@@ -1657,13 +2097,18 @@ export default function ControlScreen() {
         </View>
       </KeyboardSafeModal>
 
-      {/* Modal Nuevo Préstamo (Me deben / Yo debo) */}
+      {/* Modal Nuevo / Editar Préstamo (Me deben / Yo debo) */}
       <KeyboardSafeModal
         visible={showLoanModal}
         animationType="slide"
-        onClose={() => setShowLoanModal(false)}
+        onClose={() => {
+          setShowLoanModal(false);
+          setEditingLoan(null);
+        }}
       >
-        <Text style={styles.modalTitle}>Nuevo Registro de Préstamo</Text>
+        <Text style={styles.modalTitle}>
+          {editingLoan ? 'Editar Registro de Préstamo' : 'Nuevo Registro de Préstamo'}
+        </Text>
 
         <View style={styles.segmentRow}>
           <TouchableOpacity
@@ -1706,6 +2151,54 @@ export default function ControlScreen() {
           onChangeText={setLoanAmount}
         />
 
+        {/* Cuenta de donde salió o entró el dinero */}
+        <Text style={styles.inputLabel}>
+          🏦 {loanDirection === 'lent' ? '¿De qué cuenta prestaste el dinero?' : '¿En qué cuenta recibiste el préstamo?'}
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {accounts.map((acc) => {
+            const isSel = loanAccountId === acc.id;
+            return (
+              <TouchableOpacity
+                key={acc.id}
+                style={[
+                  styles.chip,
+                  isSel && {
+                    borderColor: loanDirection === 'lent' ? '#22C55E' : '#38BDF8',
+                    backgroundColor: isDark
+                      ? (loanDirection === 'lent' ? '#14532D' : '#0C4A6E')
+                      : (loanDirection === 'lent' ? '#DCFCE7' : '#E0F2FE'),
+                  },
+                ]}
+                onPress={() => setLoanAccountId(isSel ? '' : acc.id)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSel && {
+                      color: isDark
+                        ? (loanDirection === 'lent' ? '#86EFAC' : '#38BDF8')
+                        : (loanDirection === 'lent' ? '#15803D' : '#0284C7'),
+                      fontWeight: '700',
+                    },
+                  ]}
+                >
+                  {acc.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <Text style={styles.inputLabel}>Fecha de promesa o vencimiento (Opcional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. 2026-11-20 o Fin de mes"
+          placeholderTextColor="#64748B"
+          value={loanDueDate}
+          onChangeText={setLoanDueDate}
+        />
+
         <Text style={styles.inputLabel}>Nota o motivo (Opcional)</Text>
         <TextInput
           style={styles.input}
@@ -1718,13 +2211,18 @@ export default function ControlScreen() {
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
           <TouchableOpacity
             style={styles.cancelBtn}
-            onPress={() => setShowLoanModal(false)}
+            onPress={() => {
+              setShowLoanModal(false);
+              setEditingLoan(null);
+            }}
           >
             <Text style={styles.cancelBtnText}>Cancelar</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.saveBtn} onPress={handleSaveLoan}>
-            <Text style={styles.saveBtnText}>Guardar Préstamo</Text>
+            <Text style={styles.saveBtnText}>
+              {editingLoan ? 'Guardar Cambios' : 'Guardar Préstamo'}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardSafeModal>

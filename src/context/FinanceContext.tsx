@@ -16,7 +16,7 @@ import {
   getDb,
   seedDefaultCategoriesOnly,
 } from '../db/database';
-import { syncRecurringNotifications } from '../services/notificationService';
+import { syncRecurringNotifications, syncAllNotifications } from '../services/notificationService';
 import { matchAccountForAlert, parseBankAlertsOrCsv } from '../services/bankAutoImportService';
 
 export interface AppBackupPayload {
@@ -90,10 +90,44 @@ interface FinanceContextType {
   deleteSavingsGoal: (goalId: string) => Promise<void>;
   // Préstamos y Deudas (Me deben / Yo debo)
   addLoanRecord: (loan: Omit<LoanRecord, 'id' | 'paidAmount' | 'isSettled'>) => Promise<void>;
-  registerLoanPayment: (loanId: string, paymentAmount: number) => Promise<void>;
+  updateLoanRecord: (
+    loanId: string,
+    updates: {
+      personName: string;
+      direction: LoanRecord['direction'];
+      totalAmount: number;
+      paidAmount?: number;
+      notes?: string;
+      date: string;
+      dueDate?: string;
+      accountId?: string;
+      isSettled?: boolean;
+    }
+  ) => Promise<void>;
+  registerLoanPayment: (loanId: string, paymentAmount: number, fromAccountId?: string) => Promise<void>;
   deleteLoanRecord: (loanId: string) => Promise<void>;
   // Rastreador de Cuotas / Deudas (Affirm, Klarna, Afterpay, Tarjetas) + Bola de Nieve / Avalancha
   addInstallmentDebt: (debt: Omit<InstallmentDebt, 'id'>) => Promise<void>;
+  updateInstallmentDebt: (
+    debtId: string,
+    updates: {
+      title: string;
+      platform: string;
+      totalAmount: number;
+      remainingBalance: number;
+      minimumPayment: number;
+      interestRate: number;
+      dueDates: string;
+      installmentsTotal: number;
+      installmentsPaid: number;
+      color: string;
+      icon: string;
+      frequency?: 'monthly' | 'biweekly' | 'weekly';
+      firstDueDate?: string;
+      reminderDaysBefore?: number;
+      accountId?: string;
+    }
+  ) => Promise<void>;
   registerInstallmentPayment: (
     debtId: string,
     paymentAmount: number,
@@ -234,37 +268,40 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
 
       const rawLoans = await db.getAllAsync<any>('SELECT * FROM loans ORDER BY is_settled ASC, rowid DESC');
-      setLoans(
-        rawLoans.map((l) => ({
-          id: l.id,
-          personName: l.person_name,
-          direction: l.direction,
-          totalAmount: Number(l.total_amount),
-          paidAmount: Number(l.paid_amount || 0),
-          notes: l.notes ?? undefined,
-          date: l.date,
-          dueDate: l.due_date ?? undefined,
-          isSettled: Boolean(l.is_settled),
-        }))
-      );
+      const mappedLoans: LoanRecord[] = rawLoans.map((l) => ({
+        id: l.id,
+        personName: l.person_name,
+        direction: l.direction,
+        totalAmount: Number(l.total_amount),
+        paidAmount: Number(l.paid_amount || 0),
+        notes: l.notes ?? undefined,
+        date: l.date,
+        dueDate: l.due_date ?? undefined,
+        isSettled: Boolean(l.is_settled),
+        accountId: l.account_id ?? undefined,
+      }));
+      setLoans(mappedLoans);
 
       const rawDebts = await db.getAllAsync<any>('SELECT * FROM installment_debts ORDER BY rowid DESC');
-      setInstallmentDebts(
-        rawDebts.map((d) => ({
-          id: d.id,
-          title: d.title,
-          platform: d.platform,
-          totalAmount: Number(d.total_amount),
-          remainingBalance: Number(d.remaining_balance),
-          minimumPayment: Number(d.minimum_payment || 0),
-          interestRate: Number(d.interest_rate || 0),
-          dueDates: d.due_dates || 'Mensual',
-          installmentsTotal: Number(d.installments_total || 4),
-          installmentsPaid: Number(d.installments_paid || 0),
-          color: d.color || '#38BDF8',
-          icon: d.icon || 'card-outline',
-        }))
-      );
+      const mappedDebts: InstallmentDebt[] = rawDebts.map((d) => ({
+        id: d.id,
+        title: d.title,
+        platform: d.platform,
+        totalAmount: Number(d.total_amount),
+        remainingBalance: Number(d.remaining_balance),
+        minimumPayment: Number(d.minimum_payment || 0),
+        interestRate: Number(d.interest_rate || 0),
+        dueDates: d.due_dates || 'Mensual',
+        installmentsTotal: Number(d.installments_total || 4),
+        installmentsPaid: Number(d.installments_paid || 0),
+        color: d.color || '#38BDF8',
+        icon: d.icon || 'card-outline',
+        frequency: d.frequency || 'monthly',
+        firstDueDate: d.first_due_date ?? undefined,
+        reminderDaysBefore: d.reminder_days ? Number(d.reminder_days) : 1,
+        accountId: d.account_id ?? undefined,
+      }));
+      setInstallmentDebts(mappedDebts);
 
       const rawTx = await db.getAllAsync<any>(
         'SELECT * FROM transactions ORDER BY date DESC, rowid DESC'
@@ -312,8 +349,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
       setRecurringItems(mappedRec);
 
-      // Programar notificaciones locales en Android (1 o 2 días antes)
-      syncRecurringNotifications(mappedRec).catch(() => {});
+      // Programar notificaciones locales en Android para recurrentes, cuotas y préstamos
+      syncAllNotifications(mappedRec, mappedDebts, mappedLoans).catch(() => {});
     } finally {
       setLoading(false);
     }
@@ -601,8 +638,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const db = await getDb();
     const id = `loan-${Date.now()}`;
     await db.runAsync(
-      `INSERT INTO loans (id, person_name, direction, total_amount, paid_amount, notes, date, due_date, is_settled)
-       VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0)`,
+      `INSERT INTO loans (id, person_name, direction, total_amount, paid_amount, notes, date, due_date, is_settled, account_id)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0, ?)`,
       [
         id,
         loan.personName.trim(),
@@ -611,12 +648,81 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         loan.notes || null,
         loan.date,
         loan.dueDate || null,
+        loan.accountId || null,
+      ]
+    );
+
+    // Si asoció una cuenta bancaria, registrar opcionalmente el movimiento
+    if (loan.accountId) {
+      if (loan.direction === 'lent') {
+        // Presté dinero -> Salida de mi cuenta
+        await addTransaction({
+          accountId: loan.accountId,
+          categoryId: 'cat-services',
+          type: 'expense',
+          amount: loan.totalAmount,
+          description: `Préstamo entregado a: ${loan.personName.trim()}`,
+          date: loan.date,
+        });
+      } else {
+        // Me prestaron dinero -> Entrada a mi cuenta
+        await addTransaction({
+          accountId: loan.accountId,
+          categoryId: 'cat-income-other',
+          type: 'income',
+          amount: loan.totalAmount,
+          description: `Préstamo recibido de: ${loan.personName.trim()}`,
+          date: loan.date,
+        });
+      }
+    }
+
+    await refreshAll();
+  };
+
+  const updateLoanRecord = async (
+    loanId: string,
+    updates: {
+      personName: string;
+      direction: LoanRecord['direction'];
+      totalAmount: number;
+      paidAmount?: number;
+      notes?: string;
+      date: string;
+      dueDate?: string;
+      accountId?: string;
+      isSettled?: boolean;
+    }
+  ) => {
+    const db = await getDb();
+    const target = loans.find((l) => l.id === loanId);
+    const paid = updates.paidAmount !== undefined ? updates.paidAmount : (target?.paidAmount ?? 0);
+    const settled = updates.isSettled !== undefined
+      ? (updates.isSettled ? 1 : 0)
+      : (paid >= updates.totalAmount ? 1 : 0);
+
+    await db.runAsync(
+      `UPDATE loans
+       SET person_name = ?, direction = ?, total_amount = ?, paid_amount = ?,
+           notes = ?, date = ?, due_date = ?, is_settled = ?, account_id = ?
+       WHERE id = ?`,
+      [
+        updates.personName.trim(),
+        updates.direction,
+        updates.totalAmount,
+        paid,
+        updates.notes || null,
+        updates.date,
+        updates.dueDate || null,
+        settled,
+        updates.accountId || null,
+        loanId,
       ]
     );
     await refreshAll();
   };
 
-  const registerLoanPayment = async (loanId: string, paymentAmount: number) => {
+  const registerLoanPayment = async (loanId: string, paymentAmount: number, fromAccountId?: string) => {
     const target = loans.find((l) => l.id === loanId);
     if (!target || paymentAmount <= 0) return;
 
@@ -628,6 +734,34 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       `UPDATE loans SET paid_amount = ?, is_settled = ? WHERE id = ?`,
       [newPaid, settled, loanId]
     );
+
+    // Si indicó cuenta, registrar el movimiento correspondiente
+    if (fromAccountId) {
+      const today = new Date().toISOString().split('T')[0];
+      if (target.direction === 'lent') {
+        // Me devolvieron dinero -> Ingreso
+        await addTransaction({
+          accountId: fromAccountId,
+          categoryId: 'cat-income-other',
+          type: 'income',
+          amount: paymentAmount,
+          description: `Cobro de préstamo: ${target.personName}`,
+          date: today,
+        });
+      } else {
+        // Pagué lo que debía -> Gasto
+        await addTransaction({
+          accountId: fromAccountId,
+          categoryId: 'cat-services',
+          type: 'expense',
+          amount: paymentAmount,
+          description: `Pago de préstamo a: ${target.personName}`,
+          date: today,
+        });
+      }
+      return;
+    }
+
     await refreshAll();
   };
 
@@ -644,8 +778,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await db.runAsync(
       `INSERT INTO installment_debts (
         id, title, platform, total_amount, remaining_balance, minimum_payment,
-        interest_rate, due_dates, installments_total, installments_paid, color, icon
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        interest_rate, due_dates, installments_total, installments_paid, color, icon,
+        frequency, first_due_date, reminder_days, account_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         debt.title.trim(),
@@ -659,6 +794,60 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         debt.installmentsPaid || 0,
         debt.color || '#38BDF8',
         debt.icon || 'card-outline',
+        debt.frequency || 'monthly',
+        debt.firstDueDate || null,
+        debt.reminderDaysBefore ?? 1,
+        debt.accountId || null,
+      ]
+    );
+    await refreshAll();
+  };
+
+  const updateInstallmentDebt = async (
+    debtId: string,
+    updates: {
+      title: string;
+      platform: string;
+      totalAmount: number;
+      remainingBalance: number;
+      minimumPayment: number;
+      interestRate: number;
+      dueDates: string;
+      installmentsTotal: number;
+      installmentsPaid: number;
+      color: string;
+      icon: string;
+      frequency?: 'monthly' | 'biweekly' | 'weekly';
+      firstDueDate?: string;
+      reminderDaysBefore?: number;
+      accountId?: string;
+    }
+  ) => {
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE installment_debts
+       SET title = ?, platform = ?, total_amount = ?, remaining_balance = ?,
+           minimum_payment = ?, interest_rate = ?, due_dates = ?,
+           installments_total = ?, installments_paid = ?, color = ?, icon = ?,
+           frequency = ?, first_due_date = ?, reminder_days = ?, account_id = ?
+       WHERE id = ?`,
+      [
+        updates.title.trim(),
+        updates.platform.trim() || 'Affirm',
+        updates.totalAmount,
+        updates.remainingBalance,
+        updates.minimumPayment || 0,
+        updates.interestRate || 0,
+        updates.dueDates.trim() || 'Mensual',
+        updates.installmentsTotal || 4,
+        updates.installmentsPaid || 0,
+        updates.color || '#38BDF8',
+        updates.icon || 'card-outline',
+        updates.frequency || 'monthly',
+        updates.firstDueDate || null,
+        updates.reminderDaysBefore ?? 1,
+        updates.accountId || null,
+        debtId,
       ]
     );
     await refreshAll();
@@ -1282,8 +1471,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     for (const l of parsed.loans || []) {
       await db.runAsync(
-        `INSERT INTO loans (id, person_name, direction, total_amount, paid_amount, notes, date, due_date, is_settled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO loans (id, person_name, direction, total_amount, paid_amount, notes, date, due_date, is_settled, account_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           l.id,
           l.personName,
@@ -1294,6 +1483,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           l.date,
           l.dueDate ?? null,
           l.isSettled ? 1 : 0,
+          l.accountId ?? null,
         ]
       );
     }
@@ -1302,8 +1492,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await db.runAsync(
         `INSERT INTO installment_debts (
           id, title, platform, total_amount, remaining_balance, minimum_payment,
-          interest_rate, due_dates, installments_total, installments_paid, color, icon
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          interest_rate, due_dates, installments_total, installments_paid, color, icon,
+          frequency, first_due_date, reminder_days, account_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           d.id,
           d.title,
@@ -1317,6 +1508,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           d.installmentsPaid || 0,
           d.color || '#38BDF8',
           d.icon || 'card-outline',
+          d.frequency || 'monthly',
+          d.firstDueDate ?? null,
+          d.reminderDaysBefore ?? 1,
+          d.accountId ?? null,
         ]
       );
     }
@@ -1415,9 +1610,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updateSavingsGoalAmount,
         deleteSavingsGoal,
         addLoanRecord,
+        updateLoanRecord,
         registerLoanPayment,
         deleteLoanRecord,
         addInstallmentDebt,
+        updateInstallmentDebt,
         registerInstallmentPayment,
         deleteInstallmentDebt,
         addTransaction,
