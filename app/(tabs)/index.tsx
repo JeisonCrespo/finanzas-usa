@@ -15,6 +15,7 @@ import { useFinance } from '../../src/context/FinanceContext';
 import { Transaction, TransactionType } from '../../src/types/finance';
 import { SmartIcon } from '../../src/components/BrandIcon';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
+import { DateField } from '../../src/components/DatePickerModal';
 import { useTheme, ThemeColors } from '../../src/context/ThemeContext';
 
 export default function DashboardScreen() {
@@ -79,6 +80,7 @@ export default function DashboardScreen() {
   const [hideOtherMoney, setHideOtherMoney] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
+  const [txDate, setTxDate] = useState(today);
 
   const dueRecurring = recurringItems.filter((item) => item.nextDueDate <= today);
 
@@ -148,6 +150,7 @@ export default function DashboardScreen() {
     setAmount('');
     setFee('');
     setDescription('');
+    setTxDate(today);
     setIsAntExpense(false);
     setShowAddModal(true);
   };
@@ -172,7 +175,7 @@ export default function DashboardScreen() {
         amount: parsedAmount,
         fee: parsedFee,
         description: description.trim() || undefined,
-        date: today,
+        date: txDate || today,
       });
       setShowAddModal(false);
       return;
@@ -188,7 +191,7 @@ export default function DashboardScreen() {
       fee: parsedFee,
       description:
         description.trim() || (txType === 'expense' ? 'Gasto manual' : 'Ingreso manual'),
-      date: today,
+      date: txDate || today,
       isAntExpense: txType === 'expense' ? (isAntExpense || selectedCategoryId === 'cat-ant') : false,
     });
     setShowAddModal(false);
@@ -766,6 +769,12 @@ export default function DashboardScreen() {
               onChangeText={setDescription}
             />
 
+            <DateField
+              label="Fecha del movimiento"
+              value={txDate}
+              onChange={setTxDate}
+            />
+
             <Text style={styles.inputLabel}>
               {txType === 'transfer' ? 'Cuenta Origen (De dónde sale)' : 'Cuenta'}
             </Text>
@@ -975,24 +984,18 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1.5 }}>
-            <Text style={styles.inputLabel}>Descripción / Comercio</Text>
-            <TextInput
-              style={styles.input}
-              value={editTxDesc}
-              onChangeText={setEditTxDesc}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.inputLabel}>Fecha (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              value={editTxDate}
-              onChangeText={setEditTxDate}
-            />
-          </View>
-        </View>
+        <Text style={styles.inputLabel}>Descripción / Comercio</Text>
+        <TextInput
+          style={styles.input}
+          value={editTxDesc}
+          onChangeText={setEditTxDesc}
+        />
+
+        <DateField
+          label="Fecha de la transacción"
+          value={editTxDate}
+          onChange={setEditTxDate}
+        />
 
         <Text style={styles.inputLabel}>
           {editTxType === 'transfer' ? 'Cuenta Origen (De dónde salió)' : 'Cuenta / Tarjeta'}

@@ -23,6 +23,7 @@ import {
 import { BRAND_PRESETS, GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
 import { sendTestNotificationNow } from '../../src/services/notificationService';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
+import { DateField } from '../../src/components/DatePickerModal';
 import { useTheme, ThemeColors } from '../../src/context/ThemeContext';
 
 type ControlSubTab = 'recurring' | 'debts' | 'loans' | 'goals';
@@ -1675,50 +1676,13 @@ export default function ControlScreen() {
           })}
         </View>
 
-        {/* Primera fecha de pago y presets rápidos */}
-        <Text style={styles.inputLabel}>🗓️ Primera fecha de pago (YYYY-MM-DD)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#64748B"
+        {/* Primera fecha de pago de la cuota */}
+        <DateField
+          label="🗓️ Primera fecha de pago de la cuota"
           value={debtFirstDueDate}
-          onChangeText={setDebtFirstDueDate}
+          onChange={setDebtFirstDueDate}
+          title="Primera Cuota"
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-          {[
-            { label: 'Hoy', days: 0 },
-            { label: '+7 días', days: 7 },
-            { label: '+15 días', days: 15 },
-            { label: '+30 días', days: 30 },
-          ].map((preset) => {
-            const d = new Date();
-            d.setDate(d.getDate() + preset.days);
-            const dateStr = d.toISOString().split('T')[0];
-            const isSel = debtFirstDueDate === dateStr;
-            return (
-              <TouchableOpacity
-                key={preset.label}
-                style={[
-                  styles.chip,
-                  isSel && {
-                    borderColor: '#38BDF8',
-                    backgroundColor: isDark ? '#0C4A6E' : '#E0F2FE',
-                  },
-                ]}
-                onPress={() => setDebtFirstDueDate(dateStr)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    isSel && { color: isDark ? '#38BDF8' : '#0284C7', fontWeight: '700' },
-                  ]}
-                >
-                  {preset.label} ({dateStr.slice(5)})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
 
         {/* Proyección automática de cuotas restantes en el calendario */}
         {projectedDates.length > 0 && (
@@ -2190,13 +2154,12 @@ export default function ControlScreen() {
           })}
         </ScrollView>
 
-        <Text style={styles.inputLabel}>Fecha de promesa o vencimiento (Opcional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Ej. 2026-11-20 o Fin de mes"
-          placeholderTextColor="#64748B"
+        <DateField
+          label="📅 Fecha de promesa o vencimiento (Opcional)"
           value={loanDueDate}
-          onChangeText={setLoanDueDate}
+          onChange={setLoanDueDate}
+          placeholder="Elegir fecha de vencimiento..."
+          title="Vencimiento del Préstamo"
         />
 
         <Text style={styles.inputLabel}>Nota o motivo (Opcional)</Text>
@@ -2467,11 +2430,11 @@ export default function ControlScreen() {
           </View>
         )}
 
-        <Text style={styles.inputLabel}>Fecha del Próximo Vencimiento (YYYY-MM-DD)</Text>
-        <TextInput
-          style={styles.input}
+        <DateField
+          label="📅 Fecha del Próximo Vencimiento"
           value={nextDueDate}
-          onChangeText={setNextDueDate}
+          onChange={setNextDueDate}
+          title="Próximo Vencimiento"
         />
 
         <Text style={styles.inputLabel}>🔔 Recordatorio en Android antes del vencimiento</Text>
