@@ -223,15 +223,15 @@ export default function AccountsScreen() {
         {/* Resumen de separación de cuentas */}
         <View style={styles.summaryBanner}>
           <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel}>MI SALDO (SE SUMA AL TOTAL)</Text>
-            <Text style={styles.summaryIncludedValue}>
+            <Text style={styles.summaryLabel} numberOfLines={1}>MI SALDO PROPIO</Text>
+            <Text style={styles.summaryIncludedValue} numberOfLines={1} adjustsFontSizeToFit>
               ${includedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel}>SEPARADAS / DE OTROS</Text>
-            <Text style={styles.summaryExcludedValue}>
+            <Text style={styles.summaryLabel} numberOfLines={1}>SEPARADAS / AJENO</Text>
+            <Text style={styles.summaryExcludedValue} numberOfLines={1} adjustsFontSizeToFit>
               ${excludedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
           </View>
@@ -242,19 +242,19 @@ export default function AccountsScreen() {
           <View style={styles.ownersBreakdownCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <Ionicons name="people-circle-outline" size={18} color="#C084FC" />
-              <Text style={styles.ownersBreakdownTitle}>
+              <Text style={styles.ownersBreakdownTitle} numberOfLines={1} ellipsizeMode="tail">
                 Control de Dinero Separado / Guardado por Persona
               </Text>
             </View>
             {separatedAccounts.map((sepAcc) => (
               <View key={sepAcc.id} style={styles.ownerItemRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, marginRight: 8 }}>
                   <View style={[styles.ownerDot, { backgroundColor: sepAcc.color }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.ownerItemPerson}>
-                      👤 {sepAcc.ownerName?.trim() || 'Cuenta Separada (Sin nombre asignado)'}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.ownerItemPerson} numberOfLines={1} ellipsizeMode="tail">
+                      👤 {sepAcc.ownerName?.trim() || 'Cuenta Separada (Sin nombre)'}
                     </Text>
-                    <Text style={styles.ownerItemSub}>
+                    <Text style={styles.ownerItemSub} numberOfLines={1} ellipsizeMode="tail">
                       {sepAcc.name} • {sepAcc.institution}
                     </Text>
                   </View>
@@ -267,8 +267,9 @@ export default function AccountsScreen() {
                     setEditAccMask(sepAcc.mask || '');
                     setEditAccOwnerName(sepAcc.ownerName || '');
                   }}
+                  style={{ alignItems: 'flex-end', minWidth: 70 }}
                 >
-                  <Text style={styles.ownerItemAmount}>
+                  <Text style={styles.ownerItemAmount} numberOfLines={1} adjustsFontSizeToFit>
                     ${sepAcc.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </Text>
                 </TouchableOpacity>
@@ -378,12 +379,12 @@ export default function AccountsScreen() {
                   />
                 </View>
 
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <Text style={styles.accountName}>{acc.name}</Text>
+                    <Text style={styles.accountName} numberOfLines={1} ellipsizeMode="tail">{acc.name}</Text>
                     {acc.mask && <Text style={styles.accountMask}>•••• {acc.mask}</Text>}
                   </View>
-                  <Text style={styles.accountInstitution}>
+                  <Text style={styles.accountInstitution} numberOfLines={1} ellipsizeMode="tail">
                     {acc.institution} •{' '}
                     {isCredit
                       ? 'Tarjeta de Crédito US'
@@ -405,7 +406,7 @@ export default function AccountsScreen() {
                       }}
                     >
                       <Ionicons name="person-outline" size={12} color="#E9D5FF" />
-                      <Text style={styles.ownerBadgeText}>
+                      <Text style={styles.ownerBadgeText} numberOfLines={1} ellipsizeMode="tail">
                         {acc.ownerName
                           ? `Dinero de: ${acc.ownerName}`
                           : 'Asignar de quién es este dinero'}
@@ -414,12 +415,12 @@ export default function AccountsScreen() {
                   )}
                 </View>
 
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.accountBalance}>
+                <View style={{ alignItems: 'flex-end', minWidth: 70 }}>
+                  <Text style={styles.accountBalance} numberOfLines={1} adjustsFontSizeToFit>
                     ${acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </Text>
                   {isCredit && (
-                    <Text style={styles.creditSubTag}>Saldo usado</Text>
+                    <Text style={styles.creditSubTag} numberOfLines={1}>Saldo usado</Text>
                   )}
                 </View>
               </View>

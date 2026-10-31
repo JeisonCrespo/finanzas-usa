@@ -8,12 +8,14 @@ import {
   Modal,
   TextInput,
   Alert,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
 import { Transaction, TransactionType } from '../../src/types/finance';
 import { SmartIcon } from '../../src/components/BrandIcon';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
+import { DonutChart } from '../../src/components/DonutChart';
 
 export default function DashboardScreen() {
   const {
@@ -23,7 +25,9 @@ export default function DashboardScreen() {
     recurringItems,
     includedTotalBalance,
     excludedTotalBalance,
+    otherPeopleTotalBalance,
     netWorthBalance,
+    isOtherPersonAccount,
     addTransaction,
     updateTransaction,
     importBankMovementsText,
@@ -31,7 +35,12 @@ export default function DashboardScreen() {
     deleteTransaction,
     confirmRecurringItem,
     postponeRecurringItem,
+    getCategoryBreakdown,
   } = useFinance();
+
+  // Gráfica Interactiva en Dashboard (Gastos e Ingresos Totales)
+  const [dashboardChartType, setDashboardChartType] = useState<'expense' | 'income'>('expense');
+  const [dashboardChartScope, setDashboardChartScope] = useState<'current' | 'all'>('current');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
@@ -43,11 +52,21 @@ export default function DashboardScreen() {
   const [editTxAccId, setEditTxAccId] = useState('');
   const [editTxToAccId, setEditTxToAccId] = useState('');
   const [editTxCatId, setEditTxCatId] = useState('');
+  const [editTxIsAnt, setEditTxIsAnt] = useState(false);
   const [showGWalletModal, setShowGWalletModal] = useState(false);
   const [gWalletAmount, setGWalletAmount] = useState('');
   const [gWalletMerchant, setGWalletMerchant] = useState('');
   const [gWalletText, setGWalletText] = useState('');
   const [gWalletAccId, setGWalletAccId] = useState('');
+
+  // Modal Rápido y Filtro de Gastos Hormiga 🐜
+  const [showAntModal, setShowAntModal] = useState(false);
+  const [antAmount, setAntAmount] = useState('');
+  const [antPreset, setAntPreset] = useState('☕ Café / Starbucks');
+  const [antCustomDesc, setAntCustomDesc] = useState('');
+  const [antAccId, setAntAccId] = useState('');
+  const [onlyAntFilter, setOnlyAntFilter] = useState(false);
+
   const [txType, setTxType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('');
@@ -55,6 +74,7 @@ export default function DashboardScreen() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [toAccountId, setToAccountId] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [isAntExpense, setIsAntExpense] = useState(false);
 
   // Buscador y Filtro por Mes en Historial (#1 pedido)
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,6 +102,9 @@ export default function DashboardScreen() {
         selectedMonth === 'all' || tx.date.startsWith(selectedMonth);
 
       if (!matchesMonth) return false;
+      if (onlyAntFilter && !(tx.isAntExpense || tx.categoryId === 'cat-ant')) {
+        return false;
+      }
       if (!searchQuery.trim()) return true;
 
       const q = searchQuery.toLowerCase();
@@ -93,7 +116,28 @@ export default function DashboardScreen() {
         (acc?.name.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [transactions, selectedMonth, searchQuery, categories, accounts]);
+  }, [transactions, selectedMonth, onlyAntFilter, searchQuery, categories, accounts]);
+
+  // Resumen mensual de Gastos Hormiga 🐜
+  const currentMonthPrefix = today.slice(0, 7);
+  const antExpensesThisMonth = useMemo(() => {
+    return transactions.filter(
+      (tx) =>
+        tx.type === 'expense' &&
+        tx.date.startsWith(currentMonthPrefix) &&
+        (tx.isAntExpense || tx.categoryId === 'cat-ant')
+    );
+  }, [transactions, currentMonthPrefix]);
+
+  const antMonthTotal = useMemo(() => {
+    return antExpensesThisMonth.reduce((sum, tx) => sum + tx.amount + (tx.fee || 0), 0);
+  }, [antExpensesThisMonth]);
+
+  // Desglose de Gastos e Ingresos para el Gráfico del Dashboard
+  const dashboardBreakdown = useMemo(() => {
+    const ym = dashboardChartScope === 'current' ? today.slice(0, 7) : 'all';
+    return getCategoryBreakdown(dashboardChartType, 'all', ym);
+  }, [getCategoryBreakdown, dashboardChartType, dashboardChartScope, today]);
 
   const filteredTotalExpense = useMemo(() => {
     return filteredTransactions
@@ -112,6 +156,7 @@ export default function DashboardScreen() {
     setAmount('');
     setFee('');
     setDescription('');
+    setIsAntExpense(false);
     setShowAddModal(true);
   };
 
@@ -152,6 +197,7 @@ export default function DashboardScreen() {
       description:
         description.trim() || (txType === 'expense' ? 'Gasto manual' : 'Ingreso manual'),
       date: today,
+      isAntExpense: txType === 'expense' ? (isAntExpense || selectedCategoryId === 'cat-ant') : false,
     });
     setShowAddModal(false);
   };
@@ -162,43 +208,50 @@ export default function DashboardScreen() {
         {/* Tarjeta de Saldo Principal */}
         <View style={styles.heroCard}>
           <View style={styles.heroHeaderRow}>
-            <Text style={styles.heroLabel}>SALDO TOTAL SELECCIONADO</Text>
+            <Text style={styles.heroLabel} numberOfLines={1}>SALDO DISPONIBLE</Text>
             <View style={styles.badgeIncluded}>
-              <Text style={styles.badgeIncludedText}>
-                {accounts.filter((a) => a.includeInTotal).length} de {accounts.length} cuentas
+              <Text style={styles.badgeIncludedText} numberOfLines={1}>
+                {accounts.filter((a) => a.includeInTotal && !isOtherPersonAccount(a)).length} cuentas
               </Text>
             </View>
           </View>
 
-          <Text style={styles.heroBalance}>
+          <Text style={styles.heroBalance} numberOfLines={1} adjustsFontSizeToFit>
             ${includedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
 
           <View style={styles.subBalancesRow}>
             <View style={styles.subBalanceBox}>
-              <Text style={styles.subBalanceLabel}>Cuentas Separadas (No sumadas)</Text>
-              <Text style={styles.subBalanceValue}>
+              <Text style={styles.subBalanceLabel} numberOfLines={1}>Cuentas Separadas</Text>
+              <Text style={styles.subBalanceValue} numberOfLines={1} adjustsFontSizeToFit>
                 ${excludedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
             <View style={styles.subBalanceDivider} />
             <View style={styles.subBalanceBox}>
-              <Text style={styles.subBalanceLabel}>Patrimonio Neto Total</Text>
-              <Text style={styles.subBalanceValue}>
+              <Text style={styles.subBalanceLabel} numberOfLines={1}>Mi Patrimonio Neto</Text>
+              <Text style={[styles.subBalanceValue, { color: '#38BDF8' }]} numberOfLines={1} adjustsFontSizeToFit>
                 ${netWorthBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
           </View>
 
-          {/* Desglose rápido por dueño de cuentas separadas para no mezclar dinero ajeno */}
-          {accounts.some((a) => (!a.includeInTotal && a.type !== 'credit') || a.ownerName) && (
+          {/* Desglose rápido por dueño de cuentas separadas / dinero ajeno (NO sumado al patrimonio) */}
+          {accounts.some((a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName)) && (
             <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#1E293B' }}>
-              <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>
-                👤 Detalle de Cuentas Separadas / Dinero de otros:
-              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '700' }} numberOfLines={1}>
+                  👤 Dinero de otras personas (No se suma a tu patrimonio):
+                </Text>
+                {otherPeopleTotalBalance > 0 && (
+                  <Text style={{ color: '#E9D5FF', fontSize: 11, fontWeight: '800' }}>
+                    ${otherPeopleTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </Text>
+                )}
+              </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {accounts
-                  .filter((a) => (!a.includeInTotal && a.type !== 'credit') || a.ownerName)
+                  .filter((a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName))
                   .map((sep) => (
                     <View
                       key={sep.id}
@@ -209,9 +262,10 @@ export default function DashboardScreen() {
                         borderRadius: 8,
                         paddingHorizontal: 8,
                         paddingVertical: 4,
+                        maxWidth: '100%',
                       }}
                     >
-                      <Text style={{ color: '#E9D5FF', fontSize: 11, fontWeight: '700' }}>
+                      <Text style={{ color: '#E9D5FF', fontSize: 11, fontWeight: '700' }} numberOfLines={1} ellipsizeMode="tail">
                         {sep.ownerName ? `${sep.ownerName}: ` : `${sep.name}: `}
                         <Text style={{ color: '#F8FAFC' }}>
                           ${sep.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -227,6 +281,25 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.transferQuickBtn,
+                { backgroundColor: '#451A03', borderColor: '#F59E0B' },
+              ]}
+              onPress={() => {
+                setAntAccId(accounts[0]?.id || '');
+                setAntAmount('');
+                setAntPreset('☕ Café / Starbucks');
+                setAntCustomDesc('');
+                setShowAntModal(true);
+              }}
+            >
+              <Text style={{ fontSize: 12 }}>🐜</Text>
+              <Text style={[styles.transferQuickText, { color: '#FDE68A' }]} numberOfLines={1} ellipsizeMode="tail">
+                Gasto Hormiga
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.transferQuickBtn,
                 { backgroundColor: '#052E16', borderColor: '#22C55E' },
               ]}
               onPress={() => {
@@ -237,9 +310,9 @@ export default function DashboardScreen() {
                 setShowGWalletModal(true);
               }}
             >
-              <Ionicons name="logo-google" size={15} color="#4ADE80" />
-              <Text style={[styles.transferQuickText, { color: '#4ADE80' }]}>
-                Pago Google Billetera
+              <Ionicons name="logo-google" size={13} color="#4ADE80" />
+              <Text style={[styles.transferQuickText, { color: '#4ADE80' }]} numberOfLines={1} ellipsizeMode="tail">
+                Google Billetera
               </Text>
             </TouchableOpacity>
 
@@ -247,10 +320,167 @@ export default function DashboardScreen() {
               style={styles.transferQuickBtn}
               onPress={() => openNewTransactionModal('transfer')}
             >
-              <Ionicons name="swap-horizontal-outline" size={16} color="#38BDF8" />
-              <Text style={styles.transferQuickText}>Pasar Dinero</Text>
+              <Ionicons name="swap-horizontal-outline" size={14} color="#38BDF8" />
+              <Text style={styles.transferQuickText} numberOfLines={1} ellipsizeMode="tail">
+                Pasar
+              </Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Gráfico de Dónde Se Va Tu Dinero / Origen de Ingresos Totales 📊 */}
+        <View style={styles.dashboardChartCard}>
+          <View style={styles.dashboardChartHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
+              <Ionicons name="pie-chart" size={18} color="#38BDF8" />
+              <Text style={styles.dashboardChartTitle} numberOfLines={1} ellipsizeMode="tail">
+                {dashboardChartType === 'expense'
+                  ? '¿A Dónde Se Van Tus Gastos?'
+                  : '¿De Dónde Vienen Tus Ingresos?'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.chartToggleSmallBtn}
+              onPress={() =>
+                setDashboardChartType(dashboardChartType === 'expense' ? 'income' : 'expense')
+              }
+            >
+              <Text style={styles.chartToggleSmallText}>
+                {dashboardChartType === 'expense' ? 'Ver Ingresos' : 'Ver Gastos'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Selector de Tiempo para la Gráfica */}
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+            <TouchableOpacity
+              style={[
+                styles.chartMonthChip,
+                dashboardChartScope === 'current' && styles.chartMonthChipActive,
+              ]}
+              onPress={() => setDashboardChartScope('current')}
+            >
+              <Text
+                style={[
+                  styles.chartMonthChipText,
+                  dashboardChartScope === 'current' && styles.chartMonthChipTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                Mes Actual ({today.slice(0, 7)})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.chartMonthChip,
+                dashboardChartScope === 'all' && styles.chartMonthChipActive,
+              ]}
+              onPress={() => setDashboardChartScope('all')}
+            >
+              <Text
+                style={[
+                  styles.chartMonthChipText,
+                  dashboardChartScope === 'all' && styles.chartMonthChipTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                Historial Total
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {dashboardBreakdown.length === 0 ? (
+            <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+              <Text style={{ color: '#64748B', fontSize: 13, textAlign: 'center' }}>
+                Aún no hay {dashboardChartType === 'expense' ? 'gastos' : 'ingresos'} registrados en este período.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <DonutChart
+                data={dashboardBreakdown}
+                size={180}
+                strokeWidth={22}
+                centerLabel={dashboardChartType === 'expense' ? 'Total Gastos' : 'Total Ingresos'}
+              />
+
+              <View style={{ marginTop: 10 }}>
+                {dashboardBreakdown.slice(0, 5).map((item) => (
+                  <View key={item.categoryId} style={styles.chartCategoryRow}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, marginRight: 8 }}>
+                      <SmartIcon iconName={item.icon} color={item.color} size={15} boxSize={30} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.chartCategoryName} numberOfLines={1} ellipsizeMode="tail">
+                          {item.categoryName}
+                        </Text>
+                        <View style={styles.chartProgressTrack}>
+                          <View
+                            style={[
+                              styles.chartProgressFill,
+                              { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: item.color },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.chartCategoryAmount} numberOfLines={1} adjustsFontSizeToFit>
+                        ${item.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </Text>
+                      <Text style={[styles.chartCategoryPct, { color: item.color }]}>
+                        {item.percentage.toFixed(1)}%
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Radar de Gastos Hormiga del Mes 🐜 */}
+        <View
+          style={{
+            backgroundColor: '#1C1917',
+            borderRadius: 16,
+            padding: 13,
+            borderWidth: 1,
+            borderColor: '#78350F',
+            marginBottom: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={{ color: '#FDE68A', fontSize: 13, fontWeight: '800' }}>
+              🐜 Radar de Gastos Hormiga (Mes actual)
+            </Text>
+            <Text style={{ color: '#D6D3D1', fontSize: 11, marginTop: 2 }}>
+              {antExpensesThisMonth.length === 0
+                ? 'Aún no registras cafés, snacks ni antojos este mes.'
+                : `${antExpensesThisMonth.length} antojo(s) este mes • Total acumulado: $${antMonthTotal.toFixed(2)}`}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#F59E0B',
+              paddingHorizontal: 11,
+              paddingVertical: 7,
+              borderRadius: 9,
+            }}
+            onPress={() => {
+              setAntAccId(accounts[0]?.id || '');
+              setAntAmount('');
+              setAntPreset('☕ Café / Starbucks');
+              setAntCustomDesc('');
+              setShowAntModal(true);
+            }}
+          >
+            <Text style={{ color: '#451A03', fontSize: 11, fontWeight: '800' }}>
+              + Anotar 🐜
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Banner de Recurrentes Pendientes de Confirmación Manual */}
@@ -359,6 +589,21 @@ export default function DashboardScreen() {
           <TouchableOpacity
             style={[
               styles.monthChip,
+              onlyAntFilter && {
+                backgroundColor: '#78350F',
+                borderColor: '#F59E0B',
+              },
+            ]}
+            onPress={() => setOnlyAntFilter(!onlyAntFilter)}
+          >
+            <Text style={[styles.monthChipText, onlyAntFilter && { color: '#FDE68A' }]}>
+              🐜 Solo Gastos Hormiga
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.monthChip,
               selectedMonth === 'all' && styles.monthChipActive,
             ]}
             onPress={() => setSelectedMonth('all')}
@@ -424,6 +669,7 @@ export default function DashboardScreen() {
                   setEditTxAccId(tx.accountId);
                   setEditTxToAccId(tx.toAccountId || accounts[1]?.id || accounts[0]?.id || '');
                   setEditTxCatId(tx.categoryId);
+                  setEditTxIsAnt(Boolean(tx.isAntExpense || tx.categoryId === 'cat-ant'));
                 }}
               >
                 <View style={{ marginRight: 12 }}>
@@ -434,19 +680,39 @@ export default function DashboardScreen() {
                   />
                 </View>
                 <View style={styles.txInfo}>
-                  <Text style={styles.txDescription}>{tx.description}</Text>
-                  <Text style={styles.txMeta}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={styles.txDescription} numberOfLines={1} ellipsizeMode="tail">
+                      {tx.description}
+                    </Text>
+                    {(tx.isAntExpense || tx.categoryId === 'cat-ant') && (
+                      <View
+                        style={{
+                          backgroundColor: '#451A03',
+                          borderWidth: 1,
+                          borderColor: '#F59E0B',
+                          borderRadius: 6,
+                          paddingHorizontal: 6,
+                          paddingVertical: 1,
+                        }}
+                      >
+                        <Text style={{ color: '#FDE68A', fontSize: 10, fontWeight: '800' }}>
+                          🐜 Hormiga
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.txMeta} numberOfLines={1} ellipsizeMode="tail">
                     {isTransfer
                       ? `${acc?.name || 'Origen'} → ${destAcc?.name || 'Destino'}`
                       : `${cat?.name || 'General'} • ${acc?.institution || acc?.name}`}
                   </Text>
                   {tx.fee !== undefined && tx.fee > 0 && (
-                    <Text style={styles.feeBadgeText}>
+                    <Text style={styles.feeBadgeText} numberOfLines={1} ellipsizeMode="tail">
                       Incluye comisión bancaria: -${tx.fee.toFixed(2)}
                     </Text>
                   )}
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
+                <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
                   <Text
                     style={[
                       styles.txAmount,
@@ -459,6 +725,8 @@ export default function DashboardScreen() {
                             : '#F8FAFC',
                       },
                     ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
                   >
                     {tx.type === 'income' ? '+' : tx.type === 'transfer' ? '⇄ ' : '-'}$
                     {tx.amount.toFixed(2)}
@@ -621,6 +889,40 @@ export default function DashboardScreen() {
                       </TouchableOpacity>
                     ))}
                 </ScrollView>
+
+                {txType === 'expense' && (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      backgroundColor: '#1C1917',
+                      borderWidth: 1,
+                      borderColor: '#78350F',
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      marginTop: 10,
+                    }}
+                  >
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={{ color: '#FDE68A', fontSize: 13, fontWeight: '700' }}>
+                        🐜 Es un Gasto Hormiga
+                      </Text>
+                      <Text style={{ color: '#A8A29E', fontSize: 11 }}>
+                        Café, snack, propina, bebida o compra impulsiva pequeña
+                      </Text>
+                    </View>
+                    <Switch
+                      value={isAntExpense || selectedCategoryId === 'cat-ant'}
+                      onValueChange={(val) => {
+                        setIsAntExpense(val);
+                        if (val) setSelectedCategoryId('cat-ant');
+                      }}
+                      trackColor={{ false: '#334155', true: '#F59E0B' }}
+                    />
+                  </View>
+                )}
               </>
             )}
 
@@ -815,6 +1117,40 @@ export default function DashboardScreen() {
                   </TouchableOpacity>
                 ))}
             </ScrollView>
+
+            {editTxType === 'expense' && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  backgroundColor: '#1C1917',
+                  borderWidth: 1,
+                  borderColor: '#78350F',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  marginTop: 10,
+                }}
+              >
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={{ color: '#FDE68A', fontSize: 13, fontWeight: '700' }}>
+                    🐜 Marcar como Gasto Hormiga
+                  </Text>
+                  <Text style={{ color: '#A8A29E', fontSize: 11 }}>
+                    Aparecerá en tu Radar de Gastos Hormiga del mes
+                  </Text>
+                </View>
+                <Switch
+                  value={editTxIsAnt || editTxCatId === 'cat-ant'}
+                  onValueChange={(val) => {
+                    setEditTxIsAnt(val);
+                    if (val) setEditTxCatId('cat-ant');
+                  }}
+                  trackColor={{ false: '#334155', true: '#F59E0B' }}
+                />
+              </View>
+            )}
           </>
         )}
 
@@ -842,11 +1178,156 @@ export default function DashboardScreen() {
                 fee: parsedFee,
                 description: editTxDesc.trim() || editingTx.description,
                 date: editTxDate.trim() || editingTx.date,
+                isAntExpense: editTxType === 'expense' ? (editTxIsAnt || editTxCatId === 'cat-ant') : false,
               });
               setEditingTx(null);
             }}
           >
             <Text style={styles.saveBtnText}>Guardar Cambios</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
+
+      {/* Modal Rápido para Registrar Gasto Hormiga 🐜 */}
+      <KeyboardSafeModal
+        visible={showAntModal}
+        animationType="slide"
+        onClose={() => setShowAntModal(false)}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <Text style={{ fontSize: 22 }}>🐜</Text>
+          <Text style={[styles.modalTitle, { marginBottom: 0 }]}>
+            Registrar Gasto Hormiga
+          </Text>
+        </View>
+        <Text style={{ color: '#A8A29E', fontSize: 12, lineHeight: 18, marginBottom: 10 }}>
+          Anota en segundos esos pequeños gastos diarios (café, snacks, bebidas, propinas, compras impulsivas) que a fin de mes suman mucho:
+        </Text>
+
+        <Text style={styles.inputLabel}>1. ¿En qué se te fue el antojo?</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          {[
+            '☕ Café / Starbucks',
+            '🍫 Snack / Dulce',
+            '🥤 Bebida / Refresco',
+            '🍔 Antojo / Fast Food',
+            '🛍️ Compra Impulsiva',
+            '🎮 Micro-compra / Juego',
+            '💵 Propina / Tip',
+            '🛵 Delivery / Cargo extra',
+          ].map((preset) => (
+            <TouchableOpacity
+              key={preset}
+              style={[
+                styles.chip,
+                antPreset === preset && {
+                  borderColor: '#F59E0B',
+                  backgroundColor: '#451A03',
+                },
+              ]}
+              onPress={() => setAntPreset(preset)}
+            >
+              <Text style={styles.chipText}>{preset}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>2. Monto ($ USD)</Text>
+            <TextInput
+              style={[styles.input, { fontSize: 17, fontWeight: '800', color: '#FDE68A' }]}
+              placeholder="Ej. 5.50"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={antAmount}
+              onChangeText={setAntAmount}
+            />
+          </View>
+          <View style={{ flex: 1.3 }}>
+            <Text style={styles.inputLabel}>Nota opcional</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. Iced Latte, Doritos..."
+              placeholderTextColor="#64748B"
+              value={antCustomDesc}
+              onChangeText={setAntCustomDesc}
+            />
+          </View>
+        </View>
+
+        <Text style={styles.inputLabel}>O toca un monto rápido:</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+          {['2.50', '5.00', '7.50', '10.00', '15.00'].map((qAmt) => (
+            <TouchableOpacity
+              key={qAmt}
+              style={[
+                styles.chip,
+                { flex: 1, marginRight: 0, alignItems: 'center' },
+                antAmount === qAmt && { borderColor: '#F59E0B', backgroundColor: '#451A03' },
+              ]}
+              onPress={() => setAntAmount(qAmt)}
+            >
+              <Text style={styles.chipText}>${qAmt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.inputLabel}>3. ¿Con qué cuenta o tarjeta pagaste?</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                antAccId === acc.id && {
+                  borderColor: '#F59E0B',
+                  backgroundColor: '#451A03',
+                },
+              ]}
+              onPress={() => setAntAccId(acc.id)}
+            >
+              <Text style={styles.chipText}>
+                {acc.name} (${acc.balance.toFixed(0)})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowAntModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveBtn, { backgroundColor: '#F59E0B' }]}
+            onPress={async () => {
+              const parsed = parseFloat(antAmount);
+              const accId = antAccId || accounts[0]?.id;
+              if (!parsed || parsed <= 0 || !accId) {
+                Alert.alert('Falta el monto', 'Ingresa cuánto gastaste en este gasto hormiga.');
+                return;
+              }
+              const finalDesc = antCustomDesc.trim()
+                ? `${antPreset} — ${antCustomDesc.trim()}`
+                : antPreset;
+              await addTransaction({
+                accountId: accId,
+                categoryId: 'cat-ant',
+                type: 'expense',
+                amount: parsed,
+                description: finalDesc,
+                date: today,
+                isAntExpense: true,
+              });
+              setShowAntModal(false);
+            }}
+          >
+            <Text style={[styles.saveBtnText, { color: '#451A03' }]}>
+              Guardar Hormiga 🐜
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardSafeModal>
@@ -1060,7 +1541,7 @@ const styles = StyleSheet.create({
   subBalanceValue: { color: '#CBD5E1', fontSize: 15, fontWeight: '700' },
   quickActionRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     marginTop: 14,
   },
   transferQuickBtn: {
@@ -1068,14 +1549,103 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     paddingVertical: 9,
+    paddingHorizontal: 4,
     borderRadius: 10,
     backgroundColor: '#0C4A6E',
     borderWidth: 1,
     borderColor: '#0284C7',
+    minWidth: 0,
   },
-  transferQuickText: { color: '#E0F2FE', fontSize: 12, fontWeight: '700' },
+  transferQuickText: { color: '#E0F2FE', fontSize: 11, fontWeight: '700' },
+  dashboardChartCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 16,
+  },
+  dashboardChartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  dashboardChartTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  chartToggleSmallBtn: {
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  chartToggleSmallText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  chartMonthChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  chartMonthChipActive: {
+    backgroundColor: '#0369A1',
+    borderColor: '#38BDF8',
+  },
+  chartMonthChipText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  chartMonthChipTextActive: {
+    color: '#F8FAFC',
+    fontWeight: '700',
+  },
+  chartCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B44',
+  },
+  chartCategoryName: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  chartProgressTrack: {
+    height: 4,
+    backgroundColor: '#1E293B',
+    borderRadius: 999,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  chartProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  chartCategoryAmount: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  chartCategoryPct: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
   pendingSection: {
     backgroundColor: '#1E1B4B',
     borderRadius: 16,
@@ -1215,7 +1785,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E293B',
   },
-  txInfo: { flex: 1 },
+  txInfo: { flex: 1, marginRight: 8, minWidth: 0 },
   txDescription: { color: '#F8FAFC', fontSize: 15, fontWeight: '600' },
   txMeta: { color: '#64748B', fontSize: 12, marginTop: 2 },
   feeBadgeText: {

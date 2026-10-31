@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,9 +27,47 @@ export default function AnalyticsAndBudgetsScreen() {
     getCategoryBreakdown,
   } = useFinance();
 
-  const [viewMode, setViewMode] = useState<'budgets' | 'chart'>('budgets');
+  const [viewMode, setViewMode] = useState<'budgets' | 'chart'>('chart');
   const [selectedType, setSelectedType] = useState<'expense' | 'income'>('expense');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    set.add(today.slice(0, 7));
+    for (const t of transactions) {
+      if (t.date && t.date.length >= 7) {
+        set.add(t.date.slice(0, 7));
+      }
+    }
+    return Array.from(set).sort().reverse();
+  }, [transactions, today]);
+
+  const filteredTx = useMemo(() => {
+    return transactions.filter(
+      (t) =>
+        (selectedAccountId === 'all' || t.accountId === selectedAccountId) &&
+        (selectedMonth === 'all' || t.date.startsWith(selectedMonth))
+    );
+  }, [transactions, selectedAccountId, selectedMonth]);
+
+  const breakdown = useMemo(() => {
+    return getCategoryBreakdown(selectedType, selectedAccountId, selectedMonth);
+  }, [getCategoryBreakdown, selectedType, selectedAccountId, selectedMonth]);
+
+  const totalIncome = useMemo(() => {
+    return filteredTx
+      .filter((t) => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [filteredTx]);
+
+  const totalExpense = useMemo(() => {
+    return filteredTx
+      .filter((t) => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount + (t.fee || 0), 0);
+  }, [filteredTx]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -54,15 +92,22 @@ export default function AnalyticsAndBudgetsScreen() {
   const [addingSpendBudgetId, setAddingSpendBudgetId] = useState<string | null>(null);
   const [manualSpendInput, setManualSpendInput] = useState('');
 
-  const breakdown = getCategoryBreakdown(selectedType, selectedAccountId);
-
-  const totalIncome = transactions
-    .filter((t) => t.type === 'income' && (selectedAccountId === 'all' || t.accountId === selectedAccountId))
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalExpense = transactions
-    .filter((t) => t.type === 'expense' && (selectedAccountId === 'all' || t.accountId === selectedAccountId))
-    .reduce((sum, t) => sum + t.amount, 0);
+  // Radar de Gastos Hormiga del mes actual 🐜
+  const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+  const antTransactionsThisMonth = transactions.filter(
+    (t) =>
+      t.type === 'expense' &&
+      t.date.startsWith(currentMonthPrefix) &&
+      (t.isAntExpense || t.categoryId === 'cat-ant')
+  );
+  const antTotalThisMonth = antTransactionsThisMonth.reduce(
+    (sum, t) => sum + t.amount + (t.fee || 0),
+    0
+  );
+  const monthTotalExpenses = transactions
+    .filter((t) => t.type === 'expense' && t.date.startsWith(currentMonthPrefix))
+    .reduce((sum, t) => sum + t.amount + (t.fee || 0), 0);
+  const antPctOfMonth = monthTotalExpenses > 0 ? (antTotalThisMonth / monthTotalExpenses) * 100 : 0;
 
   const handleSaveNewBudget = async () => {
     const parsedLimit = parseFloat(budgetLimit);
@@ -138,6 +183,56 @@ export default function AnalyticsAndBudgetsScreen() {
               <Text style={styles.infoBannerText}>
                 Aquí agregas todos los presupuestos mensuales que quieras (ej. Comida $200, Salidas $100) separados de tus categorías. Si te pasas del monto no pasa nada ni se bloquea nada, solo te avisa para tu control.
               </Text>
+            </View>
+
+            {/* Tarjeta Especial: Radar de Gastos Hormiga del Mes 🐜 */}
+            <View
+              style={{
+                backgroundColor: '#1C1917',
+                borderRadius: 16,
+                padding: 15,
+                borderWidth: 1,
+                borderColor: '#78350F',
+                marginBottom: 16,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 20 }}>🐜</Text>
+                  <View>
+                    <Text style={{ color: '#FDE68A', fontSize: 15, fontWeight: '800' }}>
+                      Radar de Gastos Hormiga del Mes
+                    </Text>
+                    <Text style={{ color: '#A8A29E', fontSize: 11 }}>
+                      Cafés, snacks, bebidas, propinas y compras impulsivas
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ color: '#F59E0B', fontSize: 18, fontWeight: '800' }}>
+                  ${antTotalThisMonth.toFixed(2)}
+                </Text>
+              </View>
+
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(antPctOfMonth, 100)}%`,
+                      backgroundColor: antPctOfMonth > 20 ? '#EF4444' : '#F59E0B',
+                    },
+                  ]}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={{ color: '#D6D3D1', fontSize: 11, fontWeight: '600' }}>
+                  {antTransactionsThisMonth.length} gasto(s) hormiga este mes
+                </Text>
+                <Text style={{ color: '#FDE68A', fontSize: 11, fontWeight: '700' }}>
+                  Representa el {antPctOfMonth.toFixed(1)}% de tus gastos del mes
+                </Text>
+              </View>
             </View>
 
             <View style={styles.headerSpread}>
@@ -234,6 +329,36 @@ export default function AnalyticsAndBudgetsScreen() {
           </>
         ) : (
           <>
+            {/* Selector de Filtro por Mes */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 8 }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.filterChip,
+                  selectedMonth === 'all' && styles.filterChipActive,
+                ]}
+                onPress={() => setSelectedMonth('all')}
+              >
+                <Text style={styles.filterChipText}>Todo el Historial</Text>
+              </TouchableOpacity>
+
+              {availableMonths.map((ym) => (
+                <TouchableOpacity
+                  key={ym}
+                  style={[
+                    styles.filterChip,
+                    selectedMonth === ym && styles.filterChipActive,
+                  ]}
+                  onPress={() => setSelectedMonth(ym)}
+                >
+                  <Text style={styles.filterChipText}>Mes: {ym}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             {/* Selector de Filtro por Cuenta */}
             <ScrollView
               horizontal
@@ -267,26 +392,28 @@ export default function AnalyticsAndBudgetsScreen() {
             {/* Tarjeta Comparativa Ingresos vs Gastos */}
             <View style={styles.cashflowCard}>
               <View style={styles.cashflowCol}>
-                <Text style={styles.cashflowLabel}>INGRESOS</Text>
-                <Text style={[styles.cashflowVal, { color: '#4ADE80' }]}>
+                <Text style={styles.cashflowLabel} numberOfLines={1}>INGRESOS</Text>
+                <Text style={[styles.cashflowVal, { color: '#4ADE80' }]} numberOfLines={1} adjustsFontSizeToFit>
                   +${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </Text>
               </View>
               <View style={styles.cashflowDivider} />
               <View style={styles.cashflowCol}>
-                <Text style={styles.cashflowLabel}>GASTOS</Text>
-                <Text style={[styles.cashflowVal, { color: '#F87171' }]}>
+                <Text style={styles.cashflowLabel} numberOfLines={1}>GASTOS</Text>
+                <Text style={[styles.cashflowVal, { color: '#F87171' }]} numberOfLines={1} adjustsFontSizeToFit>
                   -${totalExpense.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </Text>
               </View>
               <View style={styles.cashflowDivider} />
               <View style={styles.cashflowCol}>
-                <Text style={styles.cashflowLabel}>FLUJO NETO</Text>
+                <Text style={styles.cashflowLabel} numberOfLines={1}>FLUJO NETO</Text>
                 <Text
                   style={[
                     styles.cashflowVal,
                     { color: totalIncome - totalExpense >= 0 ? '#38BDF8' : '#FB923C' },
                   ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
                 >
                   ${(totalIncome - totalExpense).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </Text>
@@ -331,23 +458,25 @@ export default function AnalyticsAndBudgetsScreen() {
                   {breakdown.map((item) => (
                     <View key={item.categoryId} style={styles.breakdownRow}>
                       <View style={styles.breakdownTop}>
-                        <View style={styles.breakdownLeft}>
+                        <View style={[styles.breakdownLeft, { flex: 1, minWidth: 0, marginRight: 8 }]}>
                           <SmartIcon
                             iconName={item.icon}
                             color={item.color}
                             size={18}
                             boxSize={38}
                           />
-                          <View>
-                            <Text style={styles.catName}>{item.categoryName}</Text>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.catName} numberOfLines={1} ellipsizeMode="tail">
+                              {item.categoryName}
+                            </Text>
                             <Text style={styles.catCount}>
                               {item.count} {item.count === 1 ? 'movimiento' : 'movimientos'}
                             </Text>
                           </View>
                         </View>
 
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={styles.catTotal}>
+                        <View style={{ alignItems: 'flex-end', marginLeft: 6 }}>
+                          <Text style={styles.catTotal} numberOfLines={1} adjustsFontSizeToFit>
                             ${item.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </Text>
                           <Text style={[styles.catPercent, { color: item.color }]}>

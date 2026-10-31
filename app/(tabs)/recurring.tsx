@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,32 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Switch,
   Alert,
   BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinance } from '../../src/context/FinanceContext';
-import { LoanDirection, RecurrenceFrequency } from '../../src/types/finance';
+import {
+  DebtPayoffStrategy,
+  LoanDirection,
+  RecurrenceFrequency,
+  RecurringItem,
+} from '../../src/types/finance';
 import { BRAND_PRESETS, GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
 import { sendTestNotificationNow } from '../../src/services/notificationService';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
 
-type ControlSubTab = 'recurring' | 'loans' | 'goals';
+type ControlSubTab = 'recurring' | 'debts' | 'loans' | 'goals';
+
+const BNPL_PLATFORMS = [
+  { name: 'Affirm', color: '#4F46E5', icon: 'card-outline' },
+  { name: 'Klarna', color: '#EC4899', icon: 'pricetag-outline' },
+  { name: 'Afterpay', color: '#14B8A6', icon: 'bag-check-outline' },
+  { name: 'PayPal Pay in 4', color: '#0070BA', icon: 'logo-paypal' },
+  { name: 'Zip / Quadpay', color: '#8B5CF6', icon: 'flash-outline' },
+  { name: 'Tarjeta / Cuotas', color: '#EF4444', icon: 'card-outline' },
+];
 
 export default function ControlScreen() {
   const {
@@ -25,8 +40,11 @@ export default function ControlScreen() {
     categories,
     loans,
     savingsGoals,
+    installmentDebts,
     addRecurringItem,
     updateRecurringReminderDays,
+    toggleRecurringReimbursed,
+    updateRecurringSharing,
     confirmRecurringItem,
     postponeRecurringItem,
     skipRecurringCycle,
@@ -34,6 +52,9 @@ export default function ControlScreen() {
     addLoanRecord,
     registerLoanPayment,
     deleteLoanRecord,
+    addInstallmentDebt,
+    registerInstallmentPayment,
+    deleteInstallmentDebt,
     addSavingsGoal,
     updateSavingsGoalAmount,
     deleteSavingsGoal,
@@ -41,7 +62,7 @@ export default function ControlScreen() {
 
   const [subTab, setSubTab] = useState<ControlSubTab>('recurring');
 
-  // Gesto de volver atrás en Android: si está en Préstamos o Metas, regresa a Recurrentes primero
+  // Gesto de volver atrás en Android: si está en Cuotas, Préstamos o Metas, regresa a Recurrentes primero
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (subTab !== 'recurring') {
@@ -53,7 +74,7 @@ export default function ControlScreen() {
     return () => sub.remove();
   }, [subTab]);
 
-  // --- Estados Recurrentes ---
+  // --- Estados Recurrentes y Suscripciones Compartidas (Netflix, Spotify, etc.) ---
   const [showAddRecModal, setShowAddRecModal] = useState(false);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
@@ -63,8 +84,41 @@ export default function ControlScreen() {
   const [reminderDaysBefore, setReminderDaysBefore] = useState<number>(1);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [isSharedSub, setIsSharedSub] = useState(false);
+  const [sharedWithNames, setSharedWithNames] = useState('');
+  const [sharedPeopleCount, setSharedPeopleCount] = useState(2);
+  const [customMyShare, setCustomMyShare] = useState('');
+
+  // Modal para editar / activar Suscripción Compartida en un recurrente ya creado
+  const [editingSharedRec, setEditingSharedRec] = useState<RecurringItem | null>(null);
+  const [editIsShared, setEditIsShared] = useState(true);
+  const [editSharedNames, setEditSharedNames] = useState('');
+  const [editSharedCount, setEditSharedCount] = useState(2);
+  const [editMyShare, setEditMyShare] = useState('');
+
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
   const [customConfirmAmount, setCustomConfirmAmount] = useState('');
+
+  // --- Estados Rastreador de Deudas / Cuotas (Affirm, Klarna, etc.) + Bola de Nieve / Avalancha ---
+  const [payoffStrategy, setPayoffStrategy] = useState<DebtPayoffStrategy>('snowball');
+  const [extraMonthlySnowball, setExtraMonthlySnowball] = useState('');
+  const [showAddDebtModal, setShowAddDebtModal] = useState(false);
+  const [debtTitle, setDebtTitle] = useState('');
+  const [debtPlatform, setDebtPlatform] = useState('Affirm');
+  const [debtTotalAmount, setDebtTotalAmount] = useState('');
+  const [debtRemaining, setDebtRemaining] = useState('');
+  const [debtMinPayment, setDebtMinPayment] = useState('');
+  const [debtInterestApr, setDebtInterestApr] = useState('0');
+  const [debtDueDates, setDebtDueDates] = useState('');
+  const [debtInstTotal, setDebtInstTotal] = useState('4');
+  const [debtInstPaid, setDebtInstPaid] = useState('0');
+  const [debtColor, setDebtColor] = useState('#4F46E5');
+  const [debtIcon, setDebtIcon] = useState('card-outline');
+
+  // Modal Abonar Cuota a Deuda Affirm / Klarna
+  const [payingDebtId, setPayingDebtId] = useState<string | null>(null);
+  const [debtPaymentInput, setDebtPaymentInput] = useState('');
+  const [debtPayFromAccId, setDebtPayFromAccId] = useState<string>('');
 
   // --- Estados Préstamos (Me deben / Yo debo) ---
   const [showLoanModal, setShowLoanModal] = useState(false);
@@ -75,7 +129,7 @@ export default function ControlScreen() {
   const [payingLoanId, setPayingLoanId] = useState<string | null>(null);
   const [loanPaymentInput, setLoanPaymentInput] = useState('');
 
-  // --- Estados Metas de Ahorro (#2) ---
+  // --- Estados Metas de Ahorro ---
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [goalTitle, setGoalTitle] = useState('');
   const [goalTarget, setGoalTarget] = useState('');
@@ -91,6 +145,10 @@ export default function ControlScreen() {
     setSelectedCategoryId(defaultCat?.id || '');
     setTitle('');
     setAmount('');
+    setIsSharedSub(false);
+    setSharedWithNames('');
+    setSharedPeopleCount(2);
+    setCustomMyShare('');
     setNextDueDate(new Date().toISOString().split('T')[0]);
     setShowAddRecModal(true);
   };
@@ -101,6 +159,14 @@ export default function ControlScreen() {
       return;
     }
 
+    const parsedMyShare = parseFloat(customMyShare);
+    const finalMyShare =
+      isSharedSub && !isNaN(parsedMyShare) && parsedMyShare >= 0
+        ? parsedMyShare
+        : isSharedSub
+        ? parsed / Math.max(2, sharedPeopleCount)
+        : parsed;
+
     await addRecurringItem({
       title: title.trim(),
       amount: parsed,
@@ -110,8 +176,50 @@ export default function ControlScreen() {
       frequency,
       nextDueDate,
       reminderDaysBefore,
+      isShared: isSharedSub,
+      sharedWithNames: isSharedSub ? sharedWithNames.trim() || undefined : undefined,
+      sharedPeopleCount: isSharedSub ? Math.max(2, sharedPeopleCount) : 1,
+      myShareAmount: isSharedSub ? finalMyShare : parsed,
     });
     setShowAddRecModal(false);
+  };
+
+  const handleSaveInstallmentDebt = async () => {
+    const orig = parseFloat(debtTotalAmount);
+    const rem = parseFloat(debtRemaining !== '' ? debtRemaining : debtTotalAmount);
+    const minP = parseFloat(debtMinPayment) || 0;
+    const apr = parseFloat(debtInterestApr) || 0;
+    const totInst = parseInt(debtInstTotal, 10) || 4;
+    const paidInst = parseInt(debtInstPaid, 10) || 0;
+
+    if (!debtTitle.trim() || isNaN(rem) || rem < 0) {
+      Alert.alert('Datos incompletos', 'Ingresa el nombre de la compra/deuda y el saldo pendiente.');
+      return;
+    }
+
+    await addInstallmentDebt({
+      title: debtTitle.trim(),
+      platform: debtPlatform,
+      totalAmount: !isNaN(orig) && orig >= rem ? orig : rem,
+      remainingBalance: rem,
+      minimumPayment: minP > 0 ? minP : Number((rem / Math.max(1, totInst - paidInst)).toFixed(2)),
+      interestRate: apr,
+      dueDates: debtDueDates.trim() || 'Mensual',
+      installmentsTotal: totInst,
+      installmentsPaid: paidInst,
+      color: debtColor,
+      icon: debtIcon,
+    });
+
+    setDebtTitle('');
+    setDebtTotalAmount('');
+    setDebtRemaining('');
+    setDebtMinPayment('');
+    setDebtInterestApr('0');
+    setDebtDueDates('');
+    setDebtInstTotal('4');
+    setDebtInstPaid('0');
+    setShowAddDebtModal(false);
   };
 
   const handleSaveLoan = async () => {
@@ -156,6 +264,78 @@ export default function ControlScreen() {
     yearly: 'Anual',
   };
 
+  // Resumen de Suscripciones Compartidas (Netflix, Spotify, etc.)
+  const sharedSubscriptions = useMemo(
+    () => recurringItems.filter((r) => r.isShared && r.type === 'expense'),
+    [recurringItems]
+  );
+
+  const sharedStats = useMemo(() => {
+    let totalBilled = 0;
+    let myTotalRealCost = 0;
+    let pendingReimbursement = 0;
+
+    for (const sub of sharedSubscriptions) {
+      const count = Math.max(2, sub.sharedPeopleCount || 2);
+      const myPart =
+        sub.myShareAmount !== undefined && sub.myShareAmount > 0
+          ? sub.myShareAmount
+          : sub.amount / count;
+      const othersPart = Math.max(0, sub.amount - myPart);
+
+      totalBilled += sub.amount;
+      myTotalRealCost += myPart;
+      if (!sub.reimbursedThisCycle) {
+        pendingReimbursement += othersPart;
+      }
+    }
+    return { totalBilled, myTotalRealCost, pendingReimbursement };
+  }, [sharedSubscriptions]);
+
+  // Ordenamiento de Deudas / Cuotas según Método Bola de Nieve ❄️ vs Avalancha 🏔️
+  const sortedDebts = useMemo(() => {
+    const active = installmentDebts.filter((d) => d.remainingBalance > 0);
+    const settled = installmentDebts.filter((d) => d.remainingBalance <= 0);
+
+    active.sort((a, b) => {
+      if (payoffStrategy === 'snowball') {
+        // Bola de Nieve: Menor saldo pendiente primero para ganar impulso rápido
+        if (a.remainingBalance !== b.remainingBalance) {
+          return a.remainingBalance - b.remainingBalance;
+        }
+        return b.interestRate - a.interestRate;
+      } else {
+        // Avalancha: Mayor tasa de interés APR % primero (o mayor pago mínimo si ambos son 0% APR)
+        if (b.interestRate !== a.interestRate) {
+          return b.interestRate - a.interestRate;
+        }
+        return b.remainingBalance - a.remainingBalance;
+      }
+    });
+
+    return [...active, ...settled];
+  }, [installmentDebts, payoffStrategy]);
+
+  const totalDebtRemaining = useMemo(
+    () => installmentDebts.reduce((sum, d) => sum + d.remainingBalance, 0),
+    [installmentDebts]
+  );
+
+  const totalMinimumMonthly = useMemo(
+    () =>
+      installmentDebts
+        .filter((d) => d.remainingBalance > 0)
+        .reduce((sum, d) => sum + d.minimumPayment, 0),
+    [installmentDebts]
+  );
+
+  const estimatedMonthsToPayoffAll = useMemo(() => {
+    const extra = parseFloat(extraMonthlySnowball) || 0;
+    const monthlyPower = totalMinimumMonthly + extra;
+    if (totalDebtRemaining <= 0 || monthlyPower <= 0) return 0;
+    return Math.ceil(totalDebtRemaining / monthlyPower);
+  }, [totalDebtRemaining, totalMinimumMonthly, extraMonthlySnowball]);
+
   // Totales de préstamos pendientes
   const totalOwedToMe = loans
     .filter((l) => l.direction === 'lent' && !l.isSettled)
@@ -167,7 +347,7 @@ export default function ControlScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Sub-pestañas Superiores: Recurrentes | Préstamos | Metas de Ahorro */}
+      {/* Sub-pestañas Superiores: Recurrentes | Cuotas/Affirm | Préstamos | Metas */}
       <View style={styles.topTabsRow}>
         <TouchableOpacity
           style={[styles.topTabBtn, subTab === 'recurring' && styles.topTabBtnActive]}
@@ -175,7 +355,7 @@ export default function ControlScreen() {
         >
           <Ionicons
             name="calendar-outline"
-            size={15}
+            size={14}
             color={subTab === 'recurring' ? '#0F172A' : '#94A3B8'}
           />
           <Text
@@ -189,12 +369,29 @@ export default function ControlScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.topTabBtn, subTab === 'debts' && styles.topTabBtnActive]}
+          onPress={() => setSubTab('debts')}
+        >
+          <Ionicons
+            name="trending-down-outline"
+            size={14}
+            color={subTab === 'debts' ? '#0F172A' : '#94A3B8'}
+          />
+          <Text
+            style={[styles.topTabText, subTab === 'debts' && styles.topTabTextActive]}
+            numberOfLines={1}
+          >
+            Cuotas
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.topTabBtn, subTab === 'loans' && styles.topTabBtnActive]}
           onPress={() => setSubTab('loans')}
         >
           <Ionicons
             name="people-outline"
-            size={15}
+            size={14}
             color={subTab === 'loans' ? '#0F172A' : '#94A3B8'}
           />
           <Text
@@ -210,29 +407,29 @@ export default function ControlScreen() {
         >
           <Ionicons
             name="trophy-outline"
-            size={15}
+            size={14}
             color={subTab === 'goals' ? '#0F172A' : '#94A3B8'}
           />
           <Text
             style={[styles.topTabText, subTab === 'goals' && styles.topTabTextActive]}
           >
-            Metas Ahorro
+            Metas
           </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* ================= VISTA 1: RECURRENTES ================= */}
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* ================= VISTA 1: RECURRENTES + SUSCRIPCIONES COMPARTIDAS ================= */}
         {subTab === 'recurring' && (
           <>
             <View style={styles.infoBox}>
               <Ionicons name="notifications-outline" size={24} color="#38BDF8" />
               <View style={{ flex: 1 }}>
                 <Text style={styles.infoTitle}>
-                  Control Manual + Recordatorio en Android (1 o 2 días antes)
+                  Recurrentes + Suscripciones Compartidas (Netflix, Spotify...)
                 </Text>
                 <Text style={styles.infoDesc}>
-                  Ningún gasto se descuenta solo. Tu teléfono Android te enviará una notificación 1 o 2 días antes del vencimiento para que lo confirmes o pospongas.
+                  Recibe recordatorio 1 o 2 días antes en Android. Si compartes Netflix, Spotify u otra suscripción, activa "Compartir" para saber cuánto es tu parte real y cuánto te deben reembolsar.
                 </Text>
                 <TouchableOpacity
                   style={{
@@ -269,6 +466,44 @@ export default function ControlScreen() {
               </View>
             </View>
 
+            {/* Resumen de Suscripciones Compartidas */}
+            {sharedSubscriptions.length > 0 && (
+              <View style={styles.sharedSummaryBanner}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <Ionicons name="people-circle" size={18} color="#C084FC" />
+                  <Text style={{ color: '#E9D5FF', fontSize: 13, fontWeight: '800' }}>
+                    Resumen de Suscripciones Compartidas ({sharedSubscriptions.length})
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: '#C4B5FD', fontSize: 10, fontWeight: '700' }} numberOfLines={1}>
+                      COBRO TOTAL
+                    </Text>
+                    <Text style={{ color: '#F8FAFC', fontSize: 15, fontWeight: '800', marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit>
+                      ${sharedStats.totalBilled.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: '#C4B5FD', fontSize: 10, fontWeight: '700' }} numberOfLines={1}>
+                      TU PARTE REAL
+                    </Text>
+                    <Text style={{ color: '#38BDF8', fontSize: 15, fontWeight: '800', marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit>
+                      ${sharedStats.myTotalRealCost.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1.1, alignItems: 'flex-end', minWidth: 0 }}>
+                    <Text style={{ color: '#C4B5FD', fontSize: 10, fontWeight: '700' }} numberOfLines={1}>
+                      POR COBRAR
+                    </Text>
+                    <Text style={{ color: '#4ADE80', fontSize: 15, fontWeight: '800', marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit>
+                      +${sharedStats.pendingReimbursement.toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             <View style={styles.headerSpread}>
               <Text style={styles.sectionTitle}>Programados ({recurringItems.length})</Text>
               <TouchableOpacity style={styles.newBtn} onPress={openAddRecurringModal}>
@@ -281,6 +516,14 @@ export default function ControlScreen() {
               const acc = accounts.find((a) => a.id === item.accountId);
               const cat = categories.find((c) => c.id === item.categoryId);
               const remDays = item.reminderDaysBefore ?? 1;
+              const peopleCount = Math.max(2, item.sharedPeopleCount || 2);
+              const myShare =
+                item.isShared && item.myShareAmount !== undefined && item.myShareAmount > 0
+                  ? item.myShareAmount
+                  : item.isShared
+                  ? item.amount / peopleCount
+                  : item.amount;
+              const othersOweMe = Math.max(0, item.amount - myShare);
 
               return (
                 <View key={item.id} style={styles.card}>
@@ -333,14 +576,87 @@ export default function ControlScreen() {
                       >
                         {item.type === 'income' ? '+' : '-'}${item.amount.toFixed(2)}
                       </Text>
-                      <TouchableOpacity
-                        style={{ marginTop: 6 }}
-                        onPress={() => deleteRecurringItem(item.id)}
-                      >
-                        <Ionicons name="trash-outline" size={16} color="#64748B" />
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setEditingSharedRec(item);
+                            setEditIsShared(Boolean(item.isShared));
+                            setEditSharedNames(item.sharedWithNames || '');
+                            setEditSharedCount(item.sharedPeopleCount && item.sharedPeopleCount > 1 ? item.sharedPeopleCount : 2);
+                            setEditMyShare(
+                              item.myShareAmount !== undefined && item.myShareAmount > 0
+                                ? String(item.myShareAmount.toFixed(2))
+                                : String((item.amount / 2).toFixed(2))
+                            );
+                          }}
+                        >
+                          <Ionicons
+                            name="people-outline"
+                            size={17}
+                            color={item.isShared ? '#C084FC' : '#38BDF8'}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => deleteRecurringItem(item.id)}>
+                          <Ionicons name="trash-outline" size={16} color="#64748B" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
+
+                  {/* Bloque de Suscripción Compartida (Netflix, Spotify, etc.) */}
+                  {item.isShared ? (
+                    <View style={styles.sharedSubBox}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#E9D5FF', fontSize: 12, fontWeight: '800' }}>
+                            👥 Compartida ({peopleCount} personas)
+                            {item.sharedWithNames ? `: ${item.sharedWithNames}` : ''}
+                          </Text>
+                          <Text style={{ color: '#C4B5FD', fontSize: 11, marginTop: 2 }}>
+                            Tu parte real: <Text style={{ color: '#38BDF8', fontWeight: '800' }}>${myShare.toFixed(2)}</Text> • Te reembolsan:{' '}
+                            <Text style={{ color: '#4ADE80', fontWeight: '800' }}>+${othersOweMe.toFixed(2)}</Text>
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.reimbursedChip,
+                            item.reimbursedThisCycle
+                              ? { backgroundColor: '#14532D', borderColor: '#22C55E' }
+                              : { backgroundColor: '#3B0764', borderColor: '#A855F7' },
+                          ]}
+                          onPress={() => toggleRecurringReimbursed(item.id)}
+                        >
+                          <Text
+                            style={{
+                              color: item.reimbursedThisCycle ? '#4ADE80' : '#E9D5FF',
+                              fontSize: 11,
+                              fontWeight: '800',
+                            }}
+                          >
+                            {item.reimbursedThisCycle ? '✓ Ya me pagaron' : '⏳ Falta cobro'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    item.type === 'expense' && (
+                      <TouchableOpacity
+                        style={{ marginTop: 8, alignSelf: 'flex-start' }}
+                        onPress={() => {
+                          setEditingSharedRec(item);
+                          setEditIsShared(true);
+                          setEditSharedNames('');
+                          setEditSharedCount(2);
+                          setEditMyShare(String((item.amount / 2).toFixed(2)));
+                        }}
+                      >
+                        <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '700' }}>
+                          👥 ¿Compartes este pago (ej. Netflix/Spotify)? Toca para dividirlo
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  )}
 
                   <View style={styles.actionsBox}>
                     <TouchableOpacity
@@ -393,7 +709,308 @@ export default function ControlScreen() {
           </>
         )}
 
-        {/* ================= VISTA 2: PRÉSTAMOS (ME DEBEN / YO DEBO) ================= */}
+        {/* ================= VISTA 2: RASTREADOR DE DEUDAS / CUOTAS (AFFIRM, KLARNA) + BOLA DE NIEVE Y AVALANCHA ================= */}
+        {subTab === 'debts' && (
+          <>
+            {/* Selector Interactivo: Método Bola de Nieve ❄️ vs Avalancha 🏔️ */}
+            <View style={styles.strategyCard}>
+              <Text style={styles.strategyHeaderTitle}>
+                Estrategia para Salir de Deudas y Cuotas (Affirm, Klarna, Tarjetas)
+              </Text>
+              <View style={styles.strategySwitchRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.strategyBtn,
+                    payoffStrategy === 'snowball' && styles.strategyBtnSnowballActive,
+                  ]}
+                  onPress={() => setPayoffStrategy('snowball')}
+                >
+                  <Ionicons
+                    name="snow-outline"
+                    size={16}
+                    color={payoffStrategy === 'snowball' ? '#0F172A' : '#38BDF8'}
+                  />
+                  <Text
+                    style={[
+                      styles.strategyBtnText,
+                      payoffStrategy === 'snowball' && { color: '#0F172A', fontWeight: '800' },
+                    ]}
+                  >
+                    ❄️ Bola de Nieve
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.strategyBtn,
+                    payoffStrategy === 'avalanche' && styles.strategyBtnAvalancheActive,
+                  ]}
+                  onPress={() => setPayoffStrategy('avalanche')}
+                >
+                  <Ionicons
+                    name="flame-outline"
+                    size={16}
+                    color={payoffStrategy === 'avalanche' ? '#0F172A' : '#FB923C'}
+                  />
+                  <Text
+                    style={[
+                      styles.strategyBtnText,
+                      payoffStrategy === 'avalanche' && { color: '#0F172A', fontWeight: '800' },
+                    ]}
+                  >
+                    🏔️ Avalancha
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.strategyExplanation}>
+                {payoffStrategy === 'snowball'
+                  ? '❄️ Bola de Nieve (Snowball): Ordena tus deudas de MENOR a MAYOR saldo pendiente. Liquidas rápido la más pequeña primero, ganas motivación y sumas esa cuota liberada para atacar la siguiente.'
+                  : '🏔️ Avalancha (Avalanche): Ordena tus deudas de MAYOR a MENOR interés (APR %). Atacas primero la deuda más costosa para ahorrar la mayor cantidad de dinero en intereses.'}
+              </Text>
+
+              <View style={styles.debtTotalsRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.loansSummaryLabel} numberOfLines={1}>PENDIENTE</Text>
+                  <Text style={[styles.loansSummaryVal, { color: '#F87171', fontSize: 16 }]} numberOfLines={1} adjustsFontSizeToFit>
+                    ${totalDebtRemaining.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.loansSummaryDivider} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.loansSummaryLabel} numberOfLines={1}>PAGO MÍNIMO</Text>
+                  <Text style={[styles.loansSummaryVal, { color: '#38BDF8', fontSize: 16 }]} numberOfLines={1} adjustsFontSizeToFit>
+                    ${totalMinimumMonthly.toFixed(2)}
+                  </Text>
+                </View>
+                {estimatedMonthsToPayoffAll > 0 && (
+                  <>
+                    <View style={styles.loansSummaryDivider} />
+                    <View style={{ flex: 0.9, alignItems: 'flex-end', minWidth: 0 }}>
+                      <Text style={styles.loansSummaryLabel} numberOfLines={1}>TIEMPO LIBRE</Text>
+                      <Text style={[styles.loansSummaryVal, { color: '#4ADE80', fontSize: 16 }]} numberOfLines={1} adjustsFontSizeToFit>
+                        {estimatedMonthsToPayoffAll} {estimatedMonthsToPayoffAll === 1 ? 'ciclo' : 'ciclos'}
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
+                <Text style={{ color: '#94A3B8', fontSize: 12, flex: 1 }}>
+                  💵 ¿Cuánto extra puedes abonar al mes para acelerar la bola de nieve?
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    { width: 95, paddingVertical: 6, textAlign: 'center', fontWeight: '800' },
+                  ]}
+                  placeholder="+$0.00"
+                  placeholderTextColor="#64748B"
+                  keyboardType="decimal-pad"
+                  value={extraMonthlySnowball}
+                  onChangeText={setExtraMonthlySnowball}
+                />
+              </View>
+            </View>
+
+            <View style={styles.headerSpread}>
+              <Text style={styles.sectionTitle}>
+                Mis Cuotas / Affirm ({installmentDebts.length})
+              </Text>
+              <TouchableOpacity
+                style={styles.newBtn}
+                onPress={() => setShowAddDebtModal(true)}
+              >
+                <Ionicons name="add" size={18} color="#0F172A" />
+                <Text style={styles.newBtnText}>Agregar Cuota / Affirm</Text>
+              </TouchableOpacity>
+            </View>
+
+            {sortedDebts.length === 0 ? (
+              <View style={styles.card}>
+                <Text style={{ color: '#F8FAFC', fontSize: 15, fontWeight: '700', textAlign: 'center' }}>
+                  No tienes compras a cuotas o deudas registradas
+                </Text>
+                <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', marginTop: 6 }}>
+                  Toca "+ Agregar Cuota / Affirm" arriba para llevar tus planes de pago de Affirm, Klarna, Afterpay, PayPal Pay in 4 o tarjetas con su barra de avance.
+                </Text>
+              </View>
+            ) : (
+              sortedDebts.map((debt, index) => {
+                const paidAmount = Math.max(0, debt.totalAmount - debt.remainingBalance);
+                const pct =
+                  debt.totalAmount > 0
+                    ? Math.min(100, (paidAmount / debt.totalAmount) * 100)
+                    : 0;
+                const isSettled = debt.remainingBalance <= 0;
+                const isPriorityOne = index === 0 && !isSettled;
+                const extraNum = parseFloat(extraMonthlySnowball) || 0;
+                const recommendedPayment = isPriorityOne
+                  ? debt.minimumPayment + extraNum
+                  : debt.minimumPayment;
+
+                return (
+                  <View
+                    key={debt.id}
+                    style={[
+                      styles.card,
+                      isPriorityOne && {
+                        borderColor: payoffStrategy === 'snowball' ? '#38BDF8' : '#FB923C',
+                        borderWidth: 1.5,
+                      },
+                    ]}
+                  >
+                    {isPriorityOne && (
+                      <View
+                        style={[
+                          styles.priorityBanner,
+                          {
+                            backgroundColor:
+                              payoffStrategy === 'snowball' ? '#0C4A6E' : '#431407',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={payoffStrategy === 'snowball' ? 'snow' : 'flame'}
+                          size={14}
+                          color={payoffStrategy === 'snowball' ? '#38BDF8' : '#FB923C'}
+                        />
+                        <Text
+                          style={{
+                            color: payoffStrategy === 'snowball' ? '#E0F2FE' : '#FFEDD5',
+                            fontSize: 11,
+                            fontWeight: '800',
+                          }}
+                        >
+                          {payoffStrategy === 'snowball'
+                            ? '🎯 OBJETIVO #1 BOLA DE NIEVE (Menor Saldo — Liquídala primero)'
+                            : '🔥 OBJETIVO #1 AVALANCHA (Mayor Interés / Prioridad)'}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.cardHeader}>
+                      <View style={{ marginRight: 12 }}>
+                        <SmartIcon iconName={debt.icon} color={debt.color} />
+                      </View>
+
+                      <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Text style={styles.itemTitle} numberOfLines={1} ellipsizeMode="tail">{debt.title}</Text>
+                          <View
+                            style={[
+                              styles.freqBadge,
+                              { backgroundColor: debt.color + '30', borderWidth: 1, borderColor: debt.color },
+                            ]}
+                          >
+                            <Text style={[styles.freqBadgeText, { color: '#F8FAFC' }]}>
+                              {debt.platform}
+                            </Text>
+                          </View>
+                          {debt.interestRate > 0 ? (
+                            <View style={[styles.freqBadge, { backgroundColor: '#450A0A' }]}>
+                              <Text style={[styles.freqBadgeText, { color: '#FCA5A5' }]}>
+                                {debt.interestRate}% APR
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={[styles.freqBadge, { backgroundColor: '#052E16' }]}>
+                              <Text style={[styles.freqBadgeText, { color: '#86EFAC' }]}>
+                                0% Interés
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <Text style={styles.itemSub} numberOfLines={1} ellipsizeMode="tail">
+                          📅 Fechas de pago: <Text style={{ color: '#F8FAFC', fontWeight: '700' }}>{debt.dueDates}</Text>
+                        </Text>
+                        <Text style={styles.dueText} numberOfLines={1} ellipsizeMode="tail">
+                          Pago mínimo / cuota:{' '}
+                          <Text style={{ color: '#38BDF8', fontWeight: '800' }}>
+                            ${debt.minimumPayment.toFixed(2)}
+                          </Text>
+                          {isPriorityOne && extraNum > 0
+                            ? ` (Con bola de nieve: $${recommendedPayment.toFixed(2)})`
+                            : ''}{' '}
+                          • Cuotas: {debt.installmentsPaid}/{debt.installmentsTotal}
+                        </Text>
+                      </View>
+
+                      <View style={{ alignItems: 'flex-end', minWidth: 70 }}>
+                        <Text
+                          style={[
+                            styles.itemAmount,
+                            { color: isSettled ? '#4ADE80' : '#F87171' },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                        >
+                          ${debt.remainingBalance.toFixed(2)}
+                        </Text>
+                        <Text style={{ color: '#64748B', fontSize: 10 }}>
+                          de ${debt.totalAmount.toFixed(2)}
+                        </Text>
+                        <TouchableOpacity
+                          style={{ marginTop: 6 }}
+                          onPress={() => deleteInstallmentDebt(debt.id)}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#64748B" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Barrita de Progreso de la Deuda / Cuotas */}
+                    <View style={{ marginTop: 12 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '600' }}>
+                          Pagado: ${paidAmount.toFixed(2)} ({pct.toFixed(0)}%)
+                        </Text>
+                        <Text style={{ color: isSettled ? '#4ADE80' : '#FBBF24', fontSize: 11, fontWeight: '700' }}>
+                          {isSettled
+                            ? '✓ ¡Deuda Liquidada!'
+                            : `Faltan $${debt.remainingBalance.toFixed(2)}`}
+                        </Text>
+                      </View>
+                      <View style={[styles.progressTrack, { marginTop: 0, height: 9 }]}>
+                        <View
+                          style={[
+                            styles.progressFill,
+                            {
+                              width: `${pct}%`,
+                              backgroundColor: isSettled ? '#22C55E' : debt.color,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+
+                    {!isSettled && (
+                      <TouchableOpacity
+                        style={[styles.confirmPrimaryBtn, { marginTop: 12, marginBottom: 0 }]}
+                        onPress={() => {
+                          setPayingDebtId(debt.id);
+                          setDebtPaymentInput(
+                            String(Math.min(debt.remainingBalance, recommendedPayment))
+                          );
+                          setDebtPayFromAccId('');
+                        }}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={17} color="#052E16" />
+                        <Text style={styles.confirmPrimaryText}>
+                          Abonar Cuota (${Math.min(debt.remainingBalance, recommendedPayment).toFixed(2)})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {/* ================= VISTA 3: PRÉSTAMOS (ME DEBEN / YO DEBO) ================= */}
         {subTab === 'loans' && (
           <>
             <View style={styles.loansSummaryCard}>
@@ -519,7 +1136,7 @@ export default function ControlScreen() {
           </>
         )}
 
-        {/* ================= VISTA 3: METAS DE AHORRO (#2) ================= */}
+        {/* ================= VISTA 4: METAS DE AHORRO ================= */}
         {subTab === 'goals' && (
           <>
             <View style={styles.infoBox}>
@@ -601,6 +1218,322 @@ export default function ControlScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Modal para Configurar / Editar Suscripción Compartida (Netflix, Spotify, etc.) */}
+      <KeyboardSafeModal
+        visible={Boolean(editingSharedRec)}
+        animationType="fade"
+        onClose={() => setEditingSharedRec(null)}
+      >
+        <Text style={styles.modalTitle}>
+          👥 Suscripción Compartida: {editingSharedRec?.title}
+        </Text>
+        <Text style={{ color: '#94A3B8', fontSize: 12, lineHeight: 18, marginBottom: 10 }}>
+          Si tú pagas la suscripción completa (${editingSharedRec?.amount.toFixed(2)}) pero la compartes con amigos o familia, configura aquí entre cuántos se divide.
+        </Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 }}>
+          <Switch
+            value={editIsShared}
+            onValueChange={setEditIsShared}
+            trackColor={{ false: '#334155', true: '#7E22CE' }}
+            thumbColor={editIsShared ? '#E9D5FF' : '#94A3B8'}
+          />
+          <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '700' }}>
+            {editIsShared ? 'Sí, comparto esta suscripción' : 'No, la pago yo solo'}
+          </Text>
+        </View>
+
+        {editIsShared && editingSharedRec && (
+          <>
+            <Text style={styles.inputLabel}>¿Entre cuántas personas se divide en total (incluyéndote)?</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+              {[2, 3, 4, 5, 6].map((num) => (
+                <TouchableOpacity
+                  key={num}
+                  style={[
+                    styles.chip,
+                    { flex: 1, marginRight: 0, alignItems: 'center' },
+                    editSharedCount === num && {
+                      borderColor: '#C084FC',
+                      backgroundColor: '#3B0764',
+                    },
+                  ]}
+                  onPress={() => {
+                    setEditSharedCount(num);
+                    setEditMyShare((editingSharedRec.amount / num).toFixed(2));
+                  }}
+                >
+                  <Text style={styles.chipText}>{num} pers.</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.inputLabel}>¿Con quiénes la compartes?</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. Hermano, Novia, Carlos..."
+              placeholderTextColor="#64748B"
+              value={editSharedNames}
+              onChangeText={setEditSharedNames}
+            />
+
+            <Text style={styles.inputLabel}>
+              Tu parte real en $ USD (El resto se contará como reembolso por cobrar)
+            </Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="decimal-pad"
+              value={editMyShare}
+              onChangeText={setEditMyShare}
+            />
+          </>
+        )}
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setEditingSharedRec(null)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveBtn, { backgroundColor: '#A855F7' }]}
+            onPress={async () => {
+              if (!editingSharedRec) return;
+              const parsedMy = parseFloat(editMyShare);
+              await updateRecurringSharing(editingSharedRec.id, {
+                isShared: editIsShared,
+                sharedWithNames: editSharedNames,
+                sharedPeopleCount: editSharedCount,
+                myShareAmount:
+                  !isNaN(parsedMy) && parsedMy >= 0
+                    ? parsedMy
+                    : editingSharedRec.amount / editSharedCount,
+              });
+              setEditingSharedRec(null);
+            }}
+          >
+            <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Guardar</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
+
+      {/* Modal Agregar Nueva Deuda / Cuota (Affirm, Klarna, Afterpay, Tarjetas) */}
+      <KeyboardSafeModal
+        visible={showAddDebtModal}
+        animationType="slide"
+        onClose={() => setShowAddDebtModal(false)}
+      >
+        <Text style={styles.modalTitle}>Nueva Deuda / Plan de Cuotas (Affirm, Klarna...)</Text>
+        <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 8 }}>
+          Anota tus compras a plazos (Affirm, Klarna, Afterpay, PayPal Pay in 4 o tarjetas) para ver tu barrita de avance y ordenarlas con Bola de Nieve o Avalancha.
+        </Text>
+
+        <Text style={styles.inputLabel}>Plataforma o Tipo de Deuda</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          {BNPL_PLATFORMS.map((p) => (
+            <TouchableOpacity
+              key={p.name}
+              style={[
+                styles.brandQuickChip,
+                debtPlatform === p.name && {
+                  borderColor: p.color,
+                  backgroundColor: p.color + '33',
+                },
+              ]}
+              onPress={() => {
+                setDebtPlatform(p.name);
+                setDebtColor(p.color);
+                setDebtIcon(p.icon);
+              }}
+            >
+              <Text style={styles.brandQuickText}>{p.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <Text style={styles.inputLabel}>¿Qué compraste o qué deuda es?</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Affirm - Amazon, Klarna - Zapatos, Teléfono..."
+          placeholderTextColor="#64748B"
+          value={debtTitle}
+          onChangeText={setDebtTitle}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Saldo Pendiente Actual ($)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. 180.00"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={debtRemaining}
+              onChangeText={(v) => {
+                setDebtRemaining(v);
+                if (!debtTotalAmount) setDebtTotalAmount(v);
+              }}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Monto Original Total ($)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. 240.00"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={debtTotalAmount}
+              onChangeText={setDebtTotalAmount}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Pago Mínimo / Cuota ($)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. 60.00"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={debtMinPayment}
+              onChangeText={setDebtMinPayment}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Interés APR % (0 si es sin interés)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0"
+              placeholderTextColor="#64748B"
+              keyboardType="decimal-pad"
+              value={debtInterestApr}
+              onChangeText={setDebtInterestApr}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Total de Cuotas</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="4"
+              placeholderTextColor="#64748B"
+              keyboardType="number-pad"
+              value={debtInstTotal}
+              onChangeText={setDebtInstTotal}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Cuotas Ya Pagadas</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="1"
+              placeholderTextColor="#64748B"
+              keyboardType="number-pad"
+              value={debtInstPaid}
+              onChangeText={setDebtInstPaid}
+            />
+          </View>
+        </View>
+
+        <Text style={styles.inputLabel}>Fecha o Fechas de Pago</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej. Días 15 y 30, Cada 2 viernes, Día 10 de cada mes..."
+          placeholderTextColor="#64748B"
+          value={debtDueDates}
+          onChangeText={setDebtDueDates}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setShowAddDebtModal(false)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveInstallmentDebt}>
+            <Text style={styles.saveBtnText}>Guardar Cuota / Deuda</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
+
+      {/* Modal Abonar Cuota a Affirm / Klarna / Deuda */}
+      <KeyboardSafeModal
+        visible={Boolean(payingDebtId)}
+        animationType="fade"
+        onClose={() => setPayingDebtId(null)}
+      >
+        <Text style={styles.modalTitle}>Abonar Cuota / Pago a Deuda</Text>
+        <Text style={styles.inputLabel}>Monto a abonar ($ USD)</Text>
+        <TextInput
+          style={styles.input}
+          keyboardType="decimal-pad"
+          value={debtPaymentInput}
+          onChangeText={setDebtPaymentInput}
+        />
+
+        <Text style={styles.inputLabel}>
+          Opcional: ¿Descontar este pago de alguna de tus cuentas bancarias?
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+          <TouchableOpacity
+            style={[
+              styles.chip,
+              debtPayFromAccId === '' && { borderColor: '#38BDF8', backgroundColor: '#0C4A6E' },
+            ]}
+            onPress={() => setDebtPayFromAccId('')}
+          >
+            <Text style={styles.chipText}>Solo bajar saldo de la deuda</Text>
+          </TouchableOpacity>
+          {accounts.map((acc) => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.chip,
+                debtPayFromAccId === acc.id && {
+                  borderColor: '#4ADE80',
+                  backgroundColor: '#14532D',
+                },
+              ]}
+              onPress={() => setDebtPayFromAccId(acc.id)}
+            >
+              <Text style={styles.chipText}>{acc.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setPayingDebtId(null)}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={async () => {
+              if (payingDebtId) {
+                const amt = parseFloat(debtPaymentInput);
+                if (amt > 0) {
+                  await registerInstallmentPayment(
+                    payingDebtId,
+                    amt,
+                    debtPayFromAccId || undefined
+                  );
+                }
+                setPayingDebtId(null);
+              }
+            }}
+          >
+            <Text style={styles.saveBtnText}>Confirmar Abono</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardSafeModal>
 
       {/* Modal Confirmar Recurrente */}
       <KeyboardSafeModal
@@ -866,7 +1799,7 @@ export default function ControlScreen() {
         </View>
       </KeyboardSafeModal>
 
-      {/* Modal Crear Nuevo Recurrente */}
+      {/* Modal Crear Nuevo Recurrente (Incluye opción de Suscripción Compartida) */}
       <KeyboardSafeModal
         visible={showAddRecModal}
         animationType="slide"
@@ -926,7 +1859,7 @@ export default function ControlScreen() {
           </>
         )}
 
-        <Text style={styles.inputLabel}>Concepto (Ej. Netflix, Steam, Renta, Quincena)</Text>
+        <Text style={styles.inputLabel}>Concepto (Ej. Netflix, Spotify, Renta, Quincena)</Text>
         <TextInput
           style={styles.input}
           placeholder="Nombre del gasto o ingreso"
@@ -935,15 +1868,103 @@ export default function ControlScreen() {
           onChangeText={setTitle}
         />
 
-        <Text style={styles.inputLabel}>Monto Estimado ($ USD)</Text>
+        <Text style={styles.inputLabel}>Monto Total Cobrado ($ USD)</Text>
         <TextInput
           style={styles.input}
           placeholder="0.00"
           placeholderTextColor="#64748B"
           keyboardType="decimal-pad"
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(v) => {
+            setAmount(v);
+            const num = parseFloat(v);
+            if (isSharedSub && !isNaN(num)) {
+              setCustomMyShare((num / Math.max(2, sharedPeopleCount)).toFixed(2));
+            }
+          }}
         />
+
+        {/* Opción Suscripción Compartida (Netflix, Spotify, etc.) */}
+        {type === 'expense' && (
+          <View style={styles.sharedConfigCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Switch
+                value={isSharedSub}
+                onValueChange={(val) => {
+                  setIsSharedSub(val);
+                  const num = parseFloat(amount);
+                  if (val && !isNaN(num)) {
+                    setCustomMyShare((num / Math.max(2, sharedPeopleCount)).toFixed(2));
+                  }
+                }}
+                trackColor={{ false: '#334155', true: '#7E22CE' }}
+                thumbColor={isSharedSub ? '#E9D5FF' : '#94A3B8'}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#E9D5FF', fontSize: 13, fontWeight: '800' }}>
+                  👥 ¿Es Suscripción Compartida? (Netflix, Spotify...)
+                </Text>
+                <Text style={{ color: '#C4B5FD', fontSize: 11 }}>
+                  Divide el costo entre varios para ver tu parte real y lo que te deben.
+                </Text>
+              </View>
+            </View>
+
+            {isSharedSub && (
+              <View style={{ marginTop: 8 }}>
+                <Text style={styles.inputLabel}>¿Entre cuántos se divide (incluyéndote)?</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginVertical: 4 }}>
+                  {[2, 3, 4, 5, 6].map((n) => (
+                    <TouchableOpacity
+                      key={n}
+                      style={[
+                        styles.chip,
+                        { flex: 1, marginRight: 0, alignItems: 'center', paddingHorizontal: 4 },
+                        sharedPeopleCount === n && {
+                          borderColor: '#C084FC',
+                          backgroundColor: '#3B0764',
+                        },
+                      ]}
+                      onPress={() => {
+                        setSharedPeopleCount(n);
+                        const num = parseFloat(amount);
+                        if (!isNaN(num)) {
+                          setCustomMyShare((num / n).toFixed(2));
+                        }
+                      }}
+                    >
+                      <Text style={styles.chipText}>{n} pers.</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1.4 }}>
+                    <Text style={styles.inputLabel}>¿Con quiénes?</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Ej. Hermano, Novia..."
+                      placeholderTextColor="#64748B"
+                      value={sharedWithNames}
+                      onChangeText={setSharedWithNames}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>Tu parte ($ USD)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="0.00"
+                      placeholderTextColor="#64748B"
+                      keyboardType="decimal-pad"
+                      value={customMyShare}
+                      onChangeText={setCustomMyShare}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         <Text style={styles.inputLabel}>Fecha del Próximo Vencimiento (YYYY-MM-DD)</Text>
         <TextInput
@@ -1051,17 +2072,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#020617' },
   topTabsRow: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 6,
-    gap: 8,
+    gap: 6,
   },
   topTabBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     paddingVertical: 9,
     borderRadius: 10,
     backgroundColor: '#0F172A',
@@ -1072,7 +2093,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#38BDF8',
     borderColor: '#38BDF8',
   },
-  topTabText: { color: '#94A3B8', fontSize: 12, fontWeight: '700' },
+  topTabText: { color: '#94A3B8', fontSize: 11, fontWeight: '700' },
   topTabTextActive: { color: '#0F172A', fontWeight: '800' },
   scrollContent: { padding: 16, paddingBottom: 40 },
   infoBox: {
@@ -1084,10 +2105,105 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: '#0369A1',
-    marginBottom: 18,
+    marginBottom: 14,
   },
   infoTitle: { color: '#38BDF8', fontSize: 14, fontWeight: '700' },
   infoDesc: { color: '#94A3B8', fontSize: 12, marginTop: 2, lineHeight: 17 },
+  sharedSummaryBanner: {
+    backgroundColor: '#1E1B4B',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#4C1D95',
+    marginBottom: 16,
+  },
+  sharedSubBox: {
+    backgroundColor: '#1E1B4B',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#4C1D95',
+  },
+  reimbursedChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  sharedConfigCard: {
+    backgroundColor: '#1E1B4B',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#4C1D95',
+  },
+  strategyCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 16,
+  },
+  strategyHeaderTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  strategySwitchRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  strategyBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  strategyBtnSnowballActive: {
+    backgroundColor: '#38BDF8',
+    borderColor: '#38BDF8',
+  },
+  strategyBtnAvalancheActive: {
+    backgroundColor: '#FB923C',
+    borderColor: '#FB923C',
+  },
+  strategyBtnText: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  strategyExplanation: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  debtTotalsRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    paddingTop: 12,
+  },
+  priorityBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
   loansSummaryCard: {
     flexDirection: 'row',
     backgroundColor: '#0F172A',
@@ -1180,19 +2296,6 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
   postponeChipText: { color: '#E2E8F0', fontSize: 12, fontWeight: '600' },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.85)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#0F172A',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    borderTopWidth: 1,
-    borderColor: '#1E293B',
-  },
   modalTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: '800', marginBottom: 12 },
   segmentRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   segmentBtn: {
@@ -1204,7 +2307,7 @@ const styles = StyleSheet.create({
   },
   segmentExpenseActive: { backgroundColor: '#EF4444' },
   segmentIncomeActive: { backgroundColor: '#22C55E' },
-  segmentText: { color: '#F8FAFC', fontWeight: '700', fontSize: 12 },
+  segmentText: { color: '#F8FAFC', fontWeight: '700', fontSize: 13 },
   brandQuickChip: {
     flexDirection: 'row',
     alignItems: 'center',

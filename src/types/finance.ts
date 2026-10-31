@@ -4,6 +4,8 @@ export type AccountType = 'checking' | 'savings' | 'credit' | 'investment' | 'ca
 
 export type RecurrenceFrequency = 'weekly' | 'biweekly' | 'monthly' | 'yearly';
 
+export type DebtPayoffStrategy = 'snowball' | 'avalanche';
+
 export interface BankAccount {
   id: string;
   name: string;
@@ -69,6 +71,21 @@ export interface LoanRecord {
   isSettled: boolean;
 }
 
+export interface InstallmentDebt {
+  id: string;
+  title: string; // Ej. "Affirm - Amazon", "Klarna - Ropa", "Afterpay", "Tarjeta Chase"
+  platform: string; // Ej. "Affirm", "Klarna", "Afterpay", "PayPal Pay in 4", "Tarjeta / Otro"
+  totalAmount: number; // Monto original total ($ USD)
+  remainingBalance: number; // Saldo pendiente actual ($ USD)
+  minimumPayment: number; // Pago mínimo o cuota ($ USD)
+  interestRate: number; // APR % (0% si es sin intereses, o ej. 24% para método Avalancha)
+  dueDates: string; // Fecha o fechas de pago (ej. "Días 15 y 30" o "Cada 2 semanas")
+  installmentsTotal: number; // Total de cuotas (ej. 4, 6, 12)
+  installmentsPaid: number; // Cuotas pagadas hasta ahora
+  color: string;
+  icon: string;
+}
+
 export interface Transaction {
   id: string;
   accountId: string;
@@ -83,6 +100,7 @@ export interface Transaction {
   isFromPlaid: boolean;
   plaidTransactionId?: string;
   recurringId?: string;
+  isAntExpense?: boolean; // 🐜 Gasto Hormiga (café, snack, antojo, compra impulsiva)
 }
 
 export interface RecurringItem {
@@ -98,6 +116,12 @@ export interface RecurringItem {
   reminderDaysBefore?: number; // 1 o 2 días antes (o 0 = el mismo día)
   active: boolean;
   notes?: string;
+  // 👥 Suscripciones Compartidas (Netflix, Spotify, etc.)
+  isShared?: boolean;
+  sharedWithNames?: string; // Ej. "Hermano, Novia"
+  sharedPeopleCount?: number; // Total personas dividiendo (incluyéndote, ej. 2, 3, 4)
+  myShareAmount?: number; // Lo que te toca a ti realmente ($ USD)
+  reimbursedThisCycle?: boolean; // Si ya te pagaron su parte en este ciclo
 }
 
 export interface CategoryBreakdown {

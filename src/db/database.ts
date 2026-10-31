@@ -28,6 +28,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-gaming', name: 'Gaming (Steam, PlayStation, Xbox)', type: 'expense', color: '#38BDF8', icon: 'mci:steam', isCustom: false },
   { id: 'cat-health', name: 'Salud y Farmacia', type: 'expense', color: '#EC4899', icon: 'medkit-outline', isCustom: false },
   { id: 'cat-shopping', name: 'Compras / Amazon', type: 'expense', color: '#FF9900', icon: 'logo-amazon', isCustom: false },
+  { id: 'cat-ant', name: 'Gastos Hormiga (Café, Snacks)', type: 'expense', color: '#F97316', icon: 'cafe-outline', isCustom: false },
   { id: 'cat-fees', name: 'Comisiones Bancarias / ATM', type: 'expense', color: '#94A3B8', icon: 'card-outline', isCustom: false },
   // Categorías de Ingresos
   { id: 'cat-salary', name: 'Nómina / Paycheck', type: 'income', color: '#22C55E', icon: 'cash-outline', isCustom: false },
@@ -105,6 +106,21 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       is_settled INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS installment_debts (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      total_amount REAL NOT NULL,
+      remaining_balance REAL NOT NULL,
+      minimum_payment REAL NOT NULL DEFAULT 0,
+      interest_rate REAL NOT NULL DEFAULT 0,
+      due_dates TEXT NOT NULL,
+      installments_total INTEGER NOT NULL DEFAULT 4,
+      installments_paid INTEGER NOT NULL DEFAULT 0,
+      color TEXT NOT NULL,
+      icon TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY NOT NULL,
       account_id TEXT NOT NULL,
@@ -119,6 +135,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       is_from_plaid INTEGER NOT NULL DEFAULT 0,
       plaid_transaction_id TEXT UNIQUE,
       recurring_id TEXT,
+      is_ant_expense INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (account_id) REFERENCES accounts (id),
       FOREIGN KEY (category_id) REFERENCES categories (id)
     );
@@ -136,6 +153,11 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       reminder_days INTEGER NOT NULL DEFAULT 1,
       active INTEGER NOT NULL DEFAULT 1,
       notes TEXT,
+      is_shared INTEGER NOT NULL DEFAULT 0,
+      shared_with_names TEXT,
+      shared_people_count INTEGER NOT NULL DEFAULT 1,
+      my_share_amount REAL DEFAULT 0,
+      reimbursed_this_cycle INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (account_id) REFERENCES accounts (id),
       FOREIGN KEY (category_id) REFERENCES categories (id)
     );
@@ -144,11 +166,17 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   // Migraciones seguras para bases de datos ya creadas
   try { await db.execAsync(`ALTER TABLE transactions ADD COLUMN fee REAL NOT NULL DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE transactions ADD COLUMN to_account_id TEXT;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE transactions ADD COLUMN is_ant_expense INTEGER NOT NULL DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN credit_limit REAL DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN closing_day INTEGER DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN due_day INTEGER DEFAULT 0;`); } catch {}
   try { await db.execAsync(`ALTER TABLE accounts ADD COLUMN owner_name TEXT;`); } catch {}
   try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN reminder_days INTEGER NOT NULL DEFAULT 1;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN shared_with_names TEXT;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN shared_people_count INTEGER NOT NULL DEFAULT 1;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN my_share_amount REAL DEFAULT 0;`); } catch {}
+  try { await db.execAsync(`ALTER TABLE recurring_items ADD COLUMN reimbursed_this_cycle INTEGER NOT NULL DEFAULT 0;`); } catch {}
 
   const initializedFlag = await db.getFirstAsync<{ value: string }>(
     "SELECT value FROM app_settings WHERE key = 'db_seeded'"

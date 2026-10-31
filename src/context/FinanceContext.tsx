@@ -3,6 +3,7 @@ import {
   BankAccount,
   Category,
   CategoryBreakdown,
+  InstallmentDebt,
   LoanRecord,
   MonthlyBudgetItem,
   RecurringItem,
@@ -28,6 +29,7 @@ export interface AppBackupPayload {
   monthlyBudgets?: MonthlyBudgetItem[];
   savingsGoals?: SavingsGoal[];
   loans?: LoanRecord[];
+  installmentDebts?: InstallmentDebt[];
 }
 
 export interface TransferParams {
@@ -48,11 +50,14 @@ interface FinanceContextType {
   monthlyBudgets: MonthlyBudgetItem[];
   savingsGoals: SavingsGoal[];
   loans: LoanRecord[];
+  installmentDebts: InstallmentDebt[];
   lastDriveBackupAt: string | null;
   recordDriveBackupTimestamp: () => Promise<void>;
   includedTotalBalance: number;
   excludedTotalBalance: number;
+  otherPeopleTotalBalance: number;
   netWorthBalance: number;
+  isOtherPersonAccount: (account: BankAccount) => boolean;
   // Cuentas y Tarjetas de Crédito
   toggleAccountIncludeInTotal: (accountId: string) => Promise<void>;
   addManualAccount: (account: Omit<BankAccount, 'id' | 'isPlaidConnected'>) => Promise<void>;
@@ -87,7 +92,15 @@ interface FinanceContextType {
   addLoanRecord: (loan: Omit<LoanRecord, 'id' | 'paidAmount' | 'isSettled'>) => Promise<void>;
   registerLoanPayment: (loanId: string, paymentAmount: number) => Promise<void>;
   deleteLoanRecord: (loanId: string) => Promise<void>;
-  // Transacciones y Transferencias
+  // Rastreador de Cuotas / Deudas (Affirm, Klarna, Afterpay, Tarjetas) + Bola de Nieve / Avalancha
+  addInstallmentDebt: (debt: Omit<InstallmentDebt, 'id'>) => Promise<void>;
+  registerInstallmentPayment: (
+    debtId: string,
+    paymentAmount: number,
+    fromAccountId?: string
+  ) => Promise<void>;
+  deleteInstallmentDebt: (debtId: string) => Promise<void>;
+  // Transacciones y Transferencias (Incluye Gastos Hormiga)
   addTransaction: (tx: Omit<Transaction, 'id' | 'isFromPlaid'>) => Promise<void>;
   updateTransaction: (
     txId: string,
@@ -100,14 +113,25 @@ interface FinanceContextType {
       fee?: number;
       description: string;
       date: string;
+      isAntExpense?: boolean;
     }
   ) => Promise<void>;
   importBankMovementsText: (rawText: string, defaultAccountId?: string) => Promise<number>;
   transferBetweenAccounts: (params: TransferParams) => Promise<void>;
   deleteTransaction: (txId: string) => Promise<void>;
-  // Recurrentes y Recordatorios en Android
+  // Recurrentes, Suscripciones Compartidas y Recordatorios en Android
   addRecurringItem: (item: Omit<RecurringItem, 'id' | 'active'>) => Promise<void>;
   updateRecurringReminderDays: (recurringId: string, reminderDaysBefore: number) => Promise<void>;
+  toggleRecurringReimbursed: (recurringId: string) => Promise<void>;
+  updateRecurringSharing: (
+    recurringId: string,
+    params: {
+      isShared: boolean;
+      sharedWithNames?: string;
+      sharedPeopleCount?: number;
+      myShareAmount?: number;
+    }
+  ) => Promise<void>;
   confirmRecurringItem: (recurringId: string, customAmount?: number, customFee?: number) => Promise<void>;
   postponeRecurringItem: (recurringId: string, daysToPostpone: number) => Promise<void>;
   skipRecurringCycle: (recurringId: string) => Promise<void>;
@@ -132,6 +156,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudgetItem[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [loans, setLoans] = useState<LoanRecord[]>([]);
+  const [installmentDebts, setInstallmentDebts] = useState<InstallmentDebt[]>([]);
   const [lastDriveBackupAt, setLastDriveBackupAtState] = useState<string | null>(null);
 
   const refreshAll = useCallback(async () => {
@@ -223,6 +248,24 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }))
       );
 
+      const rawDebts = await db.getAllAsync<any>('SELECT * FROM installment_debts ORDER BY rowid DESC');
+      setInstallmentDebts(
+        rawDebts.map((d) => ({
+          id: d.id,
+          title: d.title,
+          platform: d.platform,
+          totalAmount: Number(d.total_amount),
+          remainingBalance: Number(d.remaining_balance),
+          minimumPayment: Number(d.minimum_payment || 0),
+          interestRate: Number(d.interest_rate || 0),
+          dueDates: d.due_dates || 'Mensual',
+          installmentsTotal: Number(d.installments_total || 4),
+          installmentsPaid: Number(d.installments_paid || 0),
+          color: d.color || '#38BDF8',
+          icon: d.icon || 'card-outline',
+        }))
+      );
+
       const rawTx = await db.getAllAsync<any>(
         'SELECT * FROM transactions ORDER BY date DESC, rowid DESC'
       );
@@ -241,6 +284,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           isFromPlaid: Boolean(t.is_from_plaid),
           plaidTransactionId: t.plaid_transaction_id ?? undefined,
           recurringId: t.recurring_id ?? undefined,
+          isAntExpense: Boolean(t.is_ant_expense),
         }))
       );
 
@@ -260,6 +304,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         reminderDaysBefore: r.reminder_days !== undefined ? Number(r.reminder_days) : 1,
         active: Boolean(r.active),
         notes: r.notes ?? undefined,
+        isShared: Boolean(r.is_shared),
+        sharedWithNames: r.shared_with_names ?? undefined,
+        sharedPeopleCount: Number(r.shared_people_count || 1),
+        myShareAmount: r.my_share_amount !== undefined && r.my_share_amount !== null ? Number(r.my_share_amount) : undefined,
+        reimbursedThisCycle: Boolean(r.reimbursed_this_cycle),
       }));
       setRecurringItems(mappedRec);
 
@@ -284,21 +333,48 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLastDriveBackupAtState(nowIso);
   };
 
+  // Helper para identificar si una cuenta pertenece a otra persona
+  const isOtherPersonAccount = useCallback((account: BankAccount): boolean => {
+    if (!account.ownerName || !account.ownerName.trim()) return false;
+    const clean = account.ownerName.trim().toLowerCase();
+    const ownWords = ['yo', 'mío', 'mio', 'mi dinero', 'personal', 'propio', 'jeison', 'me', 'propia', 'mía', 'mia'];
+    return !ownWords.includes(clean);
+  }, []);
+
+  // Dinero total de otras personas guardado o administrado
+  const otherPeopleTotalBalance = useMemo(() => {
+    return accounts
+      .filter((a) => isOtherPersonAccount(a))
+      .reduce((sum, a) => sum + a.balance, 0);
+  }, [accounts, isOtherPersonAccount]);
+
+  // Saldo de cuentas propias del usuario incluidas en el día a día (excluye dinero ajeno)
   const includedTotalBalance = useMemo(() => {
     return accounts
-      .filter((a) => a.includeInTotal)
+      .filter((a) => a.includeInTotal && !isOtherPersonAccount(a))
       .reduce((sum, a) => sum + a.balance, 0);
-  }, [accounts]);
+  }, [accounts, isOtherPersonAccount]);
 
+  // Cuentas separadas totales (no sumadas al saldo diario)
   const excludedTotalBalance = useMemo(() => {
     return accounts
       .filter((a) => !a.includeInTotal)
       .reduce((sum, a) => sum + a.balance, 0);
   }, [accounts]);
 
+  // PATRIMONIO NETO REAL DEL USUARIO:
+  // Suma únicamente los activos PROPIOS del usuario (cuentas incluidas y separadas propias,
+  // restando deudas de tarjetas de crédito).
+  // Las cuentas separadas o guardadas para OTRAS PERSONAS nunca se suman aquí.
   const netWorthBalance = useMemo(() => {
-    return includedTotalBalance + excludedTotalBalance;
-  }, [includedTotalBalance, excludedTotalBalance]);
+    const ownAssets = accounts
+      .filter((a) => !isOtherPersonAccount(a) && a.type !== 'credit')
+      .reduce((sum, a) => sum + a.balance, 0);
+    const ownCreditDebt = accounts
+      .filter((a) => !isOtherPersonAccount(a) && a.type === 'credit')
+      .reduce((sum, a) => sum + Math.abs(a.balance), 0);
+    return ownAssets - ownCreditDebt;
+  }, [accounts, isOtherPersonAccount]);
 
   const toggleAccountIncludeInTotal = async (accountId: string) => {
     const db = await getDb();
@@ -561,6 +637,77 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await refreshAll();
   };
 
+  // --- RASTREADOR DE DEUDAS / CUOTAS (AFFIRM, KLARNA, AFTERPAY, TARJETAS) ---
+  const addInstallmentDebt = async (debt: Omit<InstallmentDebt, 'id'>) => {
+    const db = await getDb();
+    const id = `debt-${Date.now()}`;
+    await db.runAsync(
+      `INSERT INTO installment_debts (
+        id, title, platform, total_amount, remaining_balance, minimum_payment,
+        interest_rate, due_dates, installments_total, installments_paid, color, icon
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        debt.title.trim(),
+        debt.platform.trim() || 'Affirm',
+        debt.totalAmount,
+        debt.remainingBalance,
+        debt.minimumPayment || 0,
+        debt.interestRate || 0,
+        debt.dueDates.trim() || 'Mensual',
+        debt.installmentsTotal || 4,
+        debt.installmentsPaid || 0,
+        debt.color || '#38BDF8',
+        debt.icon || 'card-outline',
+      ]
+    );
+    await refreshAll();
+  };
+
+  const registerInstallmentPayment = async (
+    debtId: string,
+    paymentAmount: number,
+    fromAccountId?: string
+  ) => {
+    const target = installmentDebts.find((d) => d.id === debtId);
+    if (!target || paymentAmount <= 0) return;
+
+    const newRemaining = Math.max(0, target.remainingBalance - paymentAmount);
+    const newPaidCount = Math.min(
+      target.installmentsTotal || 99,
+      (target.installmentsPaid || 0) + 1
+    );
+
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE installment_debts SET remaining_balance = ?, installments_paid = ? WHERE id = ?`,
+      [newRemaining, newPaidCount, debtId]
+    );
+
+    // Si eligió descontarlo de una cuenta bancaria, registra el movimiento automáticamente
+    if (fromAccountId) {
+      const today = new Date().toISOString().split('T')[0];
+      await addTransaction({
+        accountId: fromAccountId,
+        categoryId: 'cat-shopping',
+        type: 'expense',
+        amount: paymentAmount,
+        fee: 0,
+        description: `Pago cuota: ${target.title} (${target.platform})`,
+        date: today,
+      });
+      return;
+    }
+
+    await refreshAll();
+  };
+
+  const deleteInstallmentDebt = async (debtId: string) => {
+    const db = await getDb();
+    await db.runAsync(`DELETE FROM installment_debts WHERE id = ?`, [debtId]);
+    await refreshAll();
+  };
+
   // --- TRANSACCIONES Y TRANSFERENCIAS ---
   const importBankMovementsText = async (
     rawText: string,
@@ -596,8 +743,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     await db.runAsync(
       `INSERT INTO transactions (
-        id, account_id, to_account_id, category_id, type, amount, fee, description, merchant_name, date, is_from_plaid, recurring_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        id, account_id, to_account_id, category_id, type, amount, fee, description, merchant_name, date, is_from_plaid, recurring_id, is_ant_expense
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       [
         id,
         tx.accountId,
@@ -610,6 +757,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         tx.merchantName ?? null,
         tx.date,
         tx.recurringId ?? null,
+        tx.isAntExpense || tx.categoryId === 'cat-ant' ? 1 : 0,
       ]
     );
 
@@ -790,6 +938,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       fee?: number;
       description: string;
       date: string;
+      isAntExpense?: boolean;
     }
   ) => {
     const db = await getDb();
@@ -801,9 +950,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // 2. Actualizar el registro en la base de datos
     const cleanFee = updated.fee && updated.fee > 0 ? updated.fee : 0;
+    const isAnt =
+      updated.isAntExpense !== undefined
+        ? updated.isAntExpense
+        : updated.categoryId === 'cat-ant' || Boolean(target.isAntExpense);
+
     await db.runAsync(
       `UPDATE transactions
-       SET account_id = ?, to_account_id = ?, category_id = ?, type = ?, amount = ?, fee = ?, description = ?, merchant_name = ?, date = ?
+       SET account_id = ?, to_account_id = ?, category_id = ?, type = ?, amount = ?, fee = ?, description = ?, merchant_name = ?, date = ?, is_ant_expense = ?
        WHERE id = ?`,
       [
         updated.accountId,
@@ -815,6 +969,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updated.description.trim(),
         updated.description.trim(),
         updated.date.trim() || target.date,
+        isAnt ? 1 : 0,
         txId,
       ]
     );
@@ -834,10 +989,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addRecurringItem = async (item: Omit<RecurringItem, 'id' | 'active'>) => {
     const db = await getDb();
     const id = `rec-${Date.now()}`;
+    const peopleCount = item.sharedPeopleCount && item.sharedPeopleCount > 1 ? item.sharedPeopleCount : 1;
+    const myShare =
+      item.isShared && item.myShareAmount !== undefined
+        ? item.myShareAmount
+        : item.isShared
+        ? item.amount / peopleCount
+        : item.amount;
+
     await db.runAsync(
       `INSERT INTO recurring_items (
-        id, title, amount, type, category_id, account_id, frequency, next_due_date, postponed_until, reminder_days, active, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        id, title, amount, type, category_id, account_id, frequency, next_due_date, postponed_until, reminder_days, active, notes,
+        is_shared, shared_with_names, shared_people_count, my_share_amount, reimbursed_this_cycle
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 0)`,
       [
         id,
         item.title.trim(),
@@ -850,6 +1014,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         item.postponedUntil ?? null,
         item.reminderDaysBefore !== undefined ? item.reminderDaysBefore : 1,
         item.notes ?? null,
+        item.isShared ? 1 : 0,
+        item.sharedWithNames?.trim() || null,
+        peopleCount,
+        myShare,
       ]
     );
     await refreshAll();
@@ -860,6 +1028,43 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await db.runAsync(
       `UPDATE recurring_items SET reminder_days = ? WHERE id = ?`,
       [reminderDaysBefore, recurringId]
+    );
+    await refreshAll();
+  };
+
+  const toggleRecurringReimbursed = async (recurringId: string) => {
+    const target = recurringItems.find((r) => r.id === recurringId);
+    if (!target) return;
+    const db = await getDb();
+    const nextVal = target.reimbursedThisCycle ? 0 : 1;
+    await db.runAsync(
+      `UPDATE recurring_items SET reimbursed_this_cycle = ? WHERE id = ?`,
+      [nextVal, recurringId]
+    );
+    await refreshAll();
+  };
+
+  const updateRecurringSharing = async (
+    recurringId: string,
+    params: {
+      isShared: boolean;
+      sharedWithNames?: string;
+      sharedPeopleCount?: number;
+      myShareAmount?: number;
+    }
+  ) => {
+    const db = await getDb();
+    await db.runAsync(
+      `UPDATE recurring_items
+       SET is_shared = ?, shared_with_names = ?, shared_people_count = ?, my_share_amount = ?
+       WHERE id = ?`,
+      [
+        params.isShared ? 1 : 0,
+        params.sharedWithNames?.trim() || null,
+        params.sharedPeopleCount || 1,
+        params.myShareAmount ?? 0,
+        recurringId,
+      ]
     );
     await refreshAll();
   };
@@ -889,7 +1094,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const nextCycleDate = calculateNextCycleDate(item.nextDueDate, item.frequency);
     const db = await getDb();
     await db.runAsync(
-      `UPDATE recurring_items SET next_due_date = ?, postponed_until = NULL WHERE id = ?`,
+      `UPDATE recurring_items SET next_due_date = ?, postponed_until = NULL, reimbursed_this_cycle = 0 WHERE id = ?`,
       [nextCycleDate, recurringId]
     );
     await refreshAll();
@@ -938,6 +1143,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       DELETE FROM monthly_budgets;
       DELETE FROM savings_goals;
       DELETE FROM loans;
+      DELETE FROM installment_debts;
     `);
     await seedDefaultCategoriesOnly(db);
     await refreshAll();
@@ -945,7 +1151,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const exportBackupJson = (): string => {
     const payload: AppBackupPayload = {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       accounts,
       categories,
@@ -954,6 +1160,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       monthlyBudgets,
       savingsGoals,
       loans,
+      installmentDebts,
     };
     return JSON.stringify(payload, null, 2);
   };
@@ -973,6 +1180,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       DELETE FROM monthly_budgets;
       DELETE FROM savings_goals;
       DELETE FROM loans;
+      DELETE FROM installment_debts;
     `);
 
     for (const c of parsed.categories) {
@@ -1090,6 +1298,29 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
     }
 
+    for (const d of parsed.installmentDebts || []) {
+      await db.runAsync(
+        `INSERT INTO installment_debts (
+          id, title, platform, total_amount, remaining_balance, minimum_payment,
+          interest_rate, due_dates, installments_total, installments_paid, color, icon
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          d.id,
+          d.title,
+          d.platform || 'Affirm',
+          d.totalAmount,
+          d.remainingBalance,
+          d.minimumPayment || 0,
+          d.interestRate || 0,
+          d.dueDates || 'Mensual',
+          d.installmentsTotal || 4,
+          d.installmentsPaid || 0,
+          d.color || '#38BDF8',
+          d.icon || 'card-outline',
+        ]
+      );
+    }
+
     await refreshAll();
   };
 
@@ -1160,11 +1391,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         monthlyBudgets,
         savingsGoals,
         loans,
+        installmentDebts,
         lastDriveBackupAt,
         recordDriveBackupTimestamp,
         includedTotalBalance,
         excludedTotalBalance,
+        otherPeopleTotalBalance,
         netWorthBalance,
+        isOtherPersonAccount,
         toggleAccountIncludeInTotal,
         addManualAccount,
         connectCustomUSBank,
@@ -1183,6 +1417,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addLoanRecord,
         registerLoanPayment,
         deleteLoanRecord,
+        addInstallmentDebt,
+        registerInstallmentPayment,
+        deleteInstallmentDebt,
         addTransaction,
         updateTransaction,
         importBankMovementsText,
@@ -1190,6 +1427,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         deleteTransaction,
         addRecurringItem,
         updateRecurringReminderDays,
+        toggleRecurringReimbursed,
+        updateRecurringSharing,
         confirmRecurringItem,
         postponeRecurringItem,
         skipRecurringCycle,
