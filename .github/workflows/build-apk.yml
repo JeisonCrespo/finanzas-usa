@@ -57,39 +57,39 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.4
-          name: "Finanzas USA Android APK (v1.0.4)"
+          name: "Finanzas USA Android APK (v1.0.4) — Correcciones y Mejoras Visuales"
           body: |
-            ### 🚀 Novedades de Finanzas USA v1.0.4
+            ### 🚀 Finanzas USA v1.0.4 — Corrección de Errores y Bugs Visuales
 
-            Esta versión **1.0.4** introduce el soporte completo para temas, herramientas de supervivencia financiera, radar de fugas de dinero y perfeccionamiento visual:
+            Esta actualización **1.0.4** se enfoca en resolver errores reportados, pulir la interfaz visual en modo claro/oscuro, integrar un calendario interactivo en toda la app y añadir control total sobre préstamos, cuotas y cuentas separadas:
 
-            #### 🌓 1. Modo Blanco y Negro (Tema Claro y Oscuro)
-            - **Tema dual en toda la app**: Cambia al instante entre el modo oscuro para la noche y el nuevo **modo blanco (claro)** para el día.
-            - **Adaptación completa**: Fondos, tarjetas, textos de alto contraste, modales emergentes y gráfica de dona se transforman automáticamente.
-            - **Persistencia en SQLite**: Tu elección se mantiene guardada incluso al reiniciar la app.
+            #### 🐛 1. Arreglo de Errores y Bugs Visuales
+            - **Corrección en Tema Claro (Modo Blanco)**: Eliminados todos los fondos oscuros/negros residuales en la tarjeta de *Runway (Presupuesto)*, el *Radar de Gastos Hormiga (Resumen)*, botones de acceso rápido y modales de edición. Ahora todo el contenido mantiene un contraste suave y legible.
+            - **Textos y Botones sin Desbordes**: Ajuste responsivo de tipografías y padding en botones de Presupuesto, Cuentas y Ajustes para evitar cortes en cualquier pantalla.
+            - **Eliminación de duplicados**: Corregido el doble signo `+` en botones de categorías y creación.
 
-            #### 🐜 2. Radar de Gastos Hormiga & Suscripciones Compartidas
-            - **Detección de gastos impulsivos**: Visualiza cafés, snacks, propinas y compras pequeñas para evitar fugas silenciosas.
-            - **Cálculo de impacto**: Conoce qué porcentaje de tus gastos totales representan estas compras.
-            - **Diseño sin desbordes**: Encaja limpiamente en cualquier tamaño de pantalla.
+            #### 📅 2. Nuevo Calendario Interactivo en Toda la App
+            - **Adiós a escribir fechas manualmente**: Selector de fechas visual integrado con navegación de meses, días de la semana y botón de confirmación.
+            - **Atajos rápidos**: Presets de un toque para *Hoy, Mañana, +7 días, +15 días* y *1° del próximo mes*.
+            - **Disponible en todos los módulos**: Registro y edición de transacciones, vencimientos de recurrentes, primera cuota de deudas BNPL y compromisos de préstamos.
 
-            #### ⏳ 3. Runway y Supervivencia Financiera
-            - **Burn Rate diario**: Ritmo promedio de gasto por día en el mes.
-            - **Días de supervivencia**: Cuántos días te duran tus fondos antes de llegar a $0.
-            - **Gasto diario seguro**: Simula en cuántos días cobras tu próximo cheque (3d, 5d, 7d, 10d, 15d, 30d) y obtén tu presupuesto diario seguro para sobrevivir.
+            #### 🤝 3. Préstamos: Edición y Cuentas Bancarias Asociadas
+            - **Edición completa**: Modifica el monto, persona, dirección (*Me deben / Yo debo*), fecha de promesa y notas.
+            - **Cuenta bancaria vinculada**: Ahora puedes especificar de qué cuenta salió el dinero prestado o en qué cuenta se recibió el dinero.
+            - **Registro de abonos**: Al registrar un pago parcial o total, puedes indicar a qué cuenta entra o de cuál sale el abono.
 
-            #### 💳 4. Rastreador de Deudas en Cuotas (BNPL) & Estrategias
-            - Registra tus compras a plazos (Affirm, Klarna, Afterpay, PayPal Pay in 4, tarjetas de crédito) con fechas y pagos mínimos.
-            - Métodos **Bola de Nieve** y **Avalancha** con barras de avance.
+            #### 💳 4. Cuotas y BNPL (Affirm, Klarna, Afterpay, Tarjetas)
+            - **Edición de planes de cuotas**: Modifica cuotas restantes, total, pagos mínimos y APR.
+            - **Frecuencia configurable**: Selecciona *Cada Mes (Mensual)*, *Cada 15 Días (Quincenal)* o *Semanal*.
+            - **Proyección automática de cuotas**: La app calcula y proyecta automáticamente las fechas exactas y montos estimados en el calendario para todas las cuotas pendientes.
+            - **Recordatorios locales en Android**: Notificaciones automáticas 1 o 2 días antes de cada vencimiento.
 
-            #### 👥 5. Cuentas Separadas para Otras Personas
-            - Separa el dinero guardado de familiares o terceros sin que altere tu patrimonio neto personal.
+            #### 👁️ 5. Privacidad y Control de Cuentas Separadas (Dinero Ajeno)
+            - **En Bancos**: Tus cuentas personales se muestran primero; las cuentas separadas de terceros se agrupan al fondo con un botón para colapsarlas y ocultarlas.
+            - **En Resumen**: Botón de ojo interactivo tanto en el sub-balance de *Cuentas Separadas* como en la sección de *Dinero ajeno guardado*, permitiendo ocultar todos los montos con `••••••` y esconder los recuadros individuales.
 
-            #### 🛠️ 6. Correcciones y Mejoras de Usabilidad
-            - Textos ajustados en botones de Presupuesto y Ajustes sin recortes ni desbordes.
-            - Botón de cuentas simplificado a **"Agregar Banco"**.
-            - Eliminado el doble signo `+` en botones de creación.
-            - Respaldo en la nube con Google Drive (.json) y notificaciones Android para fechas de vencimiento.
+            #### 🌓 6. Modo Blanco y Negro con Persistencia
+            - Alterna entre tema oscuro y tema claro desde Ajustes con guardado automático en SQLite.
           files: |
             Finanzas-USA-v1.0.4.apk
             Finanzas-USA.apk
