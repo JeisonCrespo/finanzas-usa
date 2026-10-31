@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Dimensions,
 } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 
 interface KeyboardSafeModalProps {
   visible: boolean;
@@ -23,6 +24,7 @@ export const KeyboardSafeModal: React.FC<KeyboardSafeModalProps> = ({
   animationType = 'slide',
   children,
 }) => {
+  const { colors, isDark } = useTheme();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const screenHeight = Dimensions.get('window').height;
 
@@ -60,13 +62,23 @@ export const KeyboardSafeModal: React.FC<KeyboardSafeModalProps> = ({
       <KeyboardAvoidingView
         style={[
           styles.modalOverlay,
+          { backgroundColor: isDark ? 'rgba(2, 6, 23, 0.85)' : 'rgba(15, 23, 42, 0.5)' },
           Platform.OS === 'android' && keyboardHeight > 0
             ? { paddingBottom: keyboardHeight }
             : null,
         ]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={[styles.modalCard, { maxHeight: maxCardHeight }]}>
+        <View
+          style={[
+            styles.modalCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              maxHeight: maxCardHeight,
+            },
+          ]}
+        >
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"

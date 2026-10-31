@@ -13,8 +13,11 @@ import { useFinance } from '../../src/context/FinanceContext';
 import { DonutChart } from '../../src/components/DonutChart';
 import { GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
+import { useTheme, ThemeColors } from '../../src/context/ThemeContext';
 
 export default function AnalyticsAndBudgetsScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const {
     accounts,
     categories,
@@ -245,27 +248,27 @@ export default function AnalyticsAndBudgetsScreen() {
             {/* Tarjeta Especial: Radar de Gastos Hormiga del Mes 🐜 */}
             <View
               style={{
-                backgroundColor: '#1C1917',
+                backgroundColor: isDark ? '#1C1917' : '#FEF3C7',
                 borderRadius: 16,
-                padding: 15,
+                padding: 14,
                 borderWidth: 1,
-                borderColor: '#78350F',
+                borderColor: isDark ? '#78350F' : '#FDE68A',
                 marginBottom: 16,
               }}
             >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                   <Text style={{ fontSize: 20 }}>🐜</Text>
-                  <View>
-                    <Text style={{ color: '#FDE68A', fontSize: 15, fontWeight: '800' }}>
-                      Radar de Gastos Hormiga del Mes
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: isDark ? '#FDE68A' : '#92400E', fontSize: 14, fontWeight: '800' }} numberOfLines={1}>
+                      Radar de Gastos Hormiga
                     </Text>
-                    <Text style={{ color: '#A8A29E', fontSize: 11 }}>
-                      Cafés, snacks, bebidas, propinas y compras impulsivas
+                    <Text style={{ color: isDark ? '#A8A29E' : '#B45309', fontSize: 11 }} numberOfLines={1}>
+                      Cafés, snacks, bebidas y salidas
                     </Text>
                   </View>
                 </View>
-                <Text style={{ color: '#F59E0B', fontSize: 18, fontWeight: '800' }}>
+                <Text style={{ color: isDark ? '#F59E0B' : '#B45309', fontSize: 17, fontWeight: '800' }}>
                   ${antTotalThisMonth.toFixed(2)}
                 </Text>
               </View>
@@ -282,12 +285,12 @@ export default function AnalyticsAndBudgetsScreen() {
                 />
               </View>
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                <Text style={{ color: '#D6D3D1', fontSize: 11, fontWeight: '600' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                <Text style={{ color: isDark ? '#D6D3D1' : '#78350F', fontSize: 11, fontWeight: '600' }}>
                   {antTransactionsThisMonth.length} gasto(s) hormiga este mes
                 </Text>
-                <Text style={{ color: '#FDE68A', fontSize: 11, fontWeight: '700' }}>
-                  Representa el {antPctOfMonth.toFixed(1)}% de tus gastos del mes
+                <Text style={{ color: isDark ? '#FDE68A' : '#92400E', fontSize: 11, fontWeight: '700' }}>
+                  {antPctOfMonth.toFixed(1)}% del total gastado
                 </Text>
               </View>
             </View>
@@ -301,7 +304,7 @@ export default function AnalyticsAndBudgetsScreen() {
                 onPress={() => setShowAddBudgetModal(true)}
               >
                 <Ionicons name="add" size={18} color="#0F172A" />
-                <Text style={styles.newBudgetBtnText} numberOfLines={1}>+ Presupuesto</Text>
+                <Text style={styles.newBudgetBtnText} numberOfLines={1}>Presupuesto</Text>
               </TouchableOpacity>
             </View>
 
@@ -858,349 +861,351 @@ export default function AnalyticsAndBudgetsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#020617' },
-  topSwitchRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 4,
-    gap: 8,
-  },
-  topSwitchBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: '#0F172A',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-  },
-  topSwitchBtnActive: {
-    backgroundColor: '#38BDF8',
-    borderColor: '#38BDF8',
-  },
-  topSwitchText: { color: '#94A3B8', fontSize: 13, fontWeight: '700' },
-  topSwitchTextActive: { color: '#0F172A', fontWeight: '800' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  infoBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#0F172A',
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#0369A1',
-    marginBottom: 16,
-  },
-  infoBannerText: { flex: 1, color: '#CBD5E1', fontSize: 12, lineHeight: 17 },
-  headerSpread: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: { color: '#F8FAFC', fontSize: 17, fontWeight: '700' },
-  newBudgetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#38BDF8',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    gap: 4,
-  },
-  newBudgetBtnText: { color: '#0F172A', fontWeight: '800', fontSize: 12 },
-  budgetCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-  },
-  budgetTitleText: { color: '#F8FAFC', fontSize: 16, fontWeight: '800' },
-  budgetNumbersRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: 10,
-    marginBottom: 6,
-  },
-  budgetSpentBig: { color: '#F8FAFC', fontSize: 18, fontWeight: '800' },
-  budgetLimitSmall: { color: '#94A3B8', fontSize: 13, fontWeight: '600' },
-  budgetStatusBadge: { fontSize: 12, fontWeight: '700' },
-  addManualSpendBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#1E293B',
-  },
-  addManualSpendText: { color: '#CBD5E1', fontSize: 12, fontWeight: '600' },
-  accountFilterScroll: { marginBottom: 14 },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#0F172A',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginRight: 8,
-  },
-  filterChipActive: {
-    backgroundColor: '#0369A1',
-    borderColor: '#38BDF8',
-  },
-  filterChipText: { color: '#F8FAFC', fontSize: 12, fontWeight: '600' },
-  cashflowCard: {
-    flexDirection: 'row',
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginBottom: 14,
-  },
-  cashflowCol: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
-  cashflowDivider: { width: 1, backgroundColor: '#1E293B', marginHorizontal: 6 },
-  cashflowLabel: { color: '#64748B', fontSize: 10, fontWeight: '700' },
-  cashflowVal: { fontSize: 15, fontWeight: '800', marginTop: 4 },
-  toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  toggleBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    backgroundColor: '#0F172A',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    minWidth: 0,
-  },
-  toggleExpenseActive: { backgroundColor: '#7F1D1D', borderColor: '#EF4444' },
-  toggleIncomeActive: { backgroundColor: '#14532D', borderColor: '#22C55E' },
-  toggleText: { color: '#F8FAFC', fontSize: 12, fontWeight: '700' },
-  chartCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-  },
-  runwayCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginTop: 16,
-  },
-  runwayHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  runwayBadgeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  runwayCardTitle: {
-    color: '#F8FAFC',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  runwayCardSub: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginTop: 2,
-    fontWeight: '600',
-  },
-  runwayStatsRow: {
-    flexDirection: 'row',
-    backgroundColor: '#1E293B44',
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginBottom: 12,
-  },
-  runwayStatCol: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  runwayDivider: {
-    width: 1,
-    backgroundColor: '#334155',
-    marginHorizontal: 4,
-  },
-  runwayStatLabel: {
-    color: '#94A3B8',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  runwayStatVal: {
-    fontSize: 15,
-    fontWeight: '800',
-    marginTop: 4,
-  },
-  runwayProgressBox: {
-    marginBottom: 12,
-  },
-  runwayProgressBar: {
-    height: 8,
-    backgroundColor: '#1E293B',
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  runwayProgressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  runwayProgressSub: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 5,
-    textAlign: 'center',
-  },
-  runwayVerdictBox: {
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    marginBottom: 8,
-  },
-  runwayVerdictTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  runwayVerdictDesc: {
-    color: '#E2E8F0',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  runwaySafeBudgetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
-  },
-  runwaySafeBudgetText: {
-    color: '#FDE68A',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  runwaySelectorLabel: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  runwayDaysChip: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#1E293B',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  runwayDaysChipActive: {
-    backgroundColor: '#0284C7',
-    borderColor: '#38BDF8',
-  },
-  runwayDaysChipText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  runwayDaysChipTextActive: {
-    color: '#F8FAFC',
-    fontWeight: '800',
-  },
-  emptyText: {
-    color: '#64748B',
-    textAlign: 'center',
-    marginVertical: 20,
-  },
-  legendList: { marginTop: 12 },
-  breakdownRow: {
-    marginBottom: 16,
-  },
-  breakdownTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  breakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  catName: { color: '#F8FAFC', fontSize: 14, fontWeight: '700' },
-  catCount: { color: '#64748B', fontSize: 11, marginTop: 1, fontWeight: '600' },
-  catTotal: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
-  catPercent: { fontSize: 12, fontWeight: '700', marginTop: 1 },
-  progressTrack: {
-    height: 7,
-    backgroundColor: '#1E293B',
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.85)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#0F172A',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    borderTopWidth: 1,
-    borderColor: '#1E293B',
-  },
-  modalTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: '800', marginBottom: 10 },
-  inputLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginTop: 8, marginBottom: 4 },
-  input: {
-    backgroundColor: '#1E293B',
-    color: '#F8FAFC',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#1E293B',
-    alignItems: 'center',
-  },
-  cancelBtnText: { color: '#94A3B8', fontWeight: '700' },
-  saveBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#38BDF8',
-    alignItems: 'center',
-  },
-  saveBtnText: { color: '#0F172A', fontWeight: '800' },
-});
+const getStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    topSwitchRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 4,
+      gap: 8,
+    },
+    topSwitchBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+    },
+    topSwitchBtnActive: {
+      backgroundColor: '#38BDF8',
+      borderColor: '#38BDF8',
+    },
+    topSwitchText: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
+    topSwitchTextActive: { color: '#0F172A', fontWeight: '800' },
+    scrollContent: { padding: 16, paddingBottom: 40 },
+    infoBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: isDark ? '#0F172A' : '#EFF6FF',
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: isDark ? '#0369A1' : '#BAE6FD',
+      marginBottom: 16,
+    },
+    infoBannerText: { flex: 1, color: isDark ? '#CBD5E1' : '#0369A1', fontSize: 12, lineHeight: 17 },
+    headerSpread: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
+    newBudgetBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#38BDF8',
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      gap: 4,
+    },
+    newBudgetBtnText: { color: '#0F172A', fontWeight: '800', fontSize: 12 },
+    budgetCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+    },
+    budgetTitleText: { color: colors.text, fontSize: 16, fontWeight: '800' },
+    budgetNumbersRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      marginTop: 10,
+      marginBottom: 6,
+    },
+    budgetSpentBig: { color: colors.text, fontSize: 18, fontWeight: '800' },
+    budgetLimitSmall: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+    budgetStatusBadge: { fontSize: 12, fontWeight: '700' },
+    addManualSpendBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      marginTop: 12,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
+    },
+    addManualSpendText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
+    accountFilterScroll: { marginBottom: 14 },
+    filterChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      marginRight: 8,
+    },
+    filterChipActive: {
+      backgroundColor: '#0369A1',
+      borderColor: '#38BDF8',
+    },
+    filterChipText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+    cashflowCard: {
+      flexDirection: 'row',
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      marginBottom: 14,
+    },
+    cashflowCol: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+    cashflowDivider: { width: 1, backgroundColor: colors.cardBorder, marginHorizontal: 6 },
+    cashflowLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '700' },
+    cashflowVal: { fontSize: 15, fontWeight: '800', marginTop: 4 },
+    toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+    toggleBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+      borderRadius: 12,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      minWidth: 0,
+    },
+    toggleExpenseActive: { backgroundColor: '#7F1D1D', borderColor: '#EF4444' },
+    toggleIncomeActive: { backgroundColor: '#14532D', borderColor: '#22C55E' },
+    toggleText: { color: '#F8FAFC', fontSize: 12, fontWeight: '700' },
+    chartCard: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+    },
+    runwayCard: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      marginTop: 16,
+    },
+    runwayHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    runwayBadgeIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    runwayCardTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: '800',
+    },
+    runwayCardSub: {
+      color: colors.textMuted,
+      fontSize: 11,
+      marginTop: 2,
+      fontWeight: '600',
+    },
+    runwayStatsRow: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? '#1E293B44' : '#F1F5F9',
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      marginBottom: 12,
+    },
+    runwayStatCol: {
+      flex: 1,
+      alignItems: 'center',
+      paddingHorizontal: 4,
+    },
+    runwayDivider: {
+      width: 1,
+      backgroundColor: colors.cardBorder,
+      marginHorizontal: 4,
+    },
+    runwayStatLabel: {
+      color: colors.textMuted,
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    runwayStatVal: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: '800',
+      marginTop: 4,
+    },
+    runwayProgressBox: {
+      marginBottom: 12,
+    },
+    runwayProgressBar: {
+      height: 8,
+      backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
+      borderRadius: 999,
+      overflow: 'hidden',
+    },
+    runwayProgressFill: {
+      height: '100%',
+      borderRadius: 999,
+    },
+    runwayProgressSub: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontWeight: '600',
+      marginTop: 5,
+      textAlign: 'center',
+    },
+    runwayVerdictBox: {
+      borderRadius: 12,
+      padding: 12,
+      borderWidth: 1,
+      marginBottom: 8,
+    },
+    runwayVerdictTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      marginBottom: 4,
+    },
+    runwayVerdictDesc: {
+      color: isDark ? '#E2E8F0' : '#334155',
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    runwaySafeBudgetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+    },
+    runwaySafeBudgetText: {
+      color: isDark ? '#FDE68A' : '#B45309',
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    runwaySelectorLabel: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontWeight: '600',
+      marginBottom: 4,
+    },
+    runwayDaysChip: {
+      flex: 1,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: isDark ? '#334155' : '#CBD5E1',
+    },
+    runwayDaysChipActive: {
+      backgroundColor: '#0284C7',
+      borderColor: '#38BDF8',
+    },
+    runwayDaysChipText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    runwayDaysChipTextActive: {
+      color: '#F8FAFC',
+      fontWeight: '800',
+    },
+    emptyText: {
+      color: colors.textMuted,
+      textAlign: 'center',
+      marginVertical: 20,
+    },
+    legendList: { marginTop: 12 },
+    breakdownRow: {
+      marginBottom: 16,
+    },
+    breakdownTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    breakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    catName: { color: colors.text, fontSize: 14, fontWeight: '700' },
+    catCount: { color: colors.textMuted, fontSize: 11, marginTop: 1, fontWeight: '600' },
+    catTotal: { color: colors.text, fontSize: 15, fontWeight: '800' },
+    catPercent: { fontSize: 12, fontWeight: '700', marginTop: 1 },
+    progressTrack: {
+      height: 7,
+      backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
+      borderRadius: 999,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 999,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: isDark ? 'rgba(2, 6, 23, 0.85)' : 'rgba(15, 23, 42, 0.6)',
+      justifyContent: 'flex-end',
+    },
+    modalCard: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 20,
+      borderTopWidth: 1,
+      borderColor: colors.cardBorder,
+    },
+    modalTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginBottom: 10 },
+    inputLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '600', marginTop: 8, marginBottom: 4 },
+    input: {
+      backgroundColor: colors.inputBg,
+      color: colors.text,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 15,
+    },
+    cancelBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
+      alignItems: 'center',
+    },
+    cancelBtnText: { color: isDark ? '#94A3B8' : '#64748B', fontWeight: '700' },
+    saveBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: '#38BDF8',
+      alignItems: 'center',
+    },
+    saveBtnText: { color: '#0F172A', fontWeight: '800' },
+  });
