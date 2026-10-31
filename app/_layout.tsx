@@ -2,14 +2,26 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { FinanceProvider } from '../src/context/FinanceContext';
+import { ThemeProvider, useTheme } from '../src/context/ThemeContext';
 
-export default function RootLayout() {
+function RootNavigation() {
+  const { isDark } = useTheme();
   return (
-    <FinanceProvider>
-      <StatusBar style="light" />
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
-    </FinanceProvider>
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <FinanceProvider>
+        <RootNavigation />
+      </FinanceProvider>
+    </ThemeProvider>
   );
 }

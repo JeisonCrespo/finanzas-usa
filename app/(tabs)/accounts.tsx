@@ -289,7 +289,7 @@ export default function AccountsScreen() {
             }}
           >
             <Ionicons name="business-outline" size={18} color="#0F172A" />
-            <Text style={styles.plaidConnectBtnText}>Agregar Banco / App</Text>
+            <Text style={styles.plaidConnectBtnText} numberOfLines={1}>Agregar Banco</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

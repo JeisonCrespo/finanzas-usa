@@ -202,8 +202,9 @@ export default function AnalyticsAndBudgetsScreen() {
               styles.topSwitchText,
               viewMode === 'budgets' && styles.topSwitchTextActive,
             ]}
+            numberOfLines={1}
           >
-            Presupuesto del Mes
+            Presupuesto
           </Text>
         </TouchableOpacity>
 
@@ -224,8 +225,9 @@ export default function AnalyticsAndBudgetsScreen() {
               styles.topSwitchText,
               viewMode === 'chart' && styles.topSwitchTextActive,
             ]}
+            numberOfLines={1}
           >
-            Gráfica de Gastos
+            Gráficas
           </Text>
         </TouchableOpacity>
       </View>
@@ -291,7 +293,7 @@ export default function AnalyticsAndBudgetsScreen() {
             </View>
 
             <View style={styles.headerSpread}>
-              <Text style={styles.sectionTitle}>
+              <Text style={styles.sectionTitle} numberOfLines={1}>
                 Mis Presupuestos ({monthlyBudgets.length})
               </Text>
               <TouchableOpacity
@@ -299,7 +301,7 @@ export default function AnalyticsAndBudgetsScreen() {
                 onPress={() => setShowAddBudgetModal(true)}
               >
                 <Ionicons name="add" size={18} color="#0F172A" />
-                <Text style={styles.newBudgetBtnText}>Agregar Presupuesto</Text>
+                <Text style={styles.newBudgetBtnText} numberOfLines={1}>+ Presupuesto</Text>
               </TouchableOpacity>
             </View>
 
@@ -484,7 +486,7 @@ export default function AnalyticsAndBudgetsScreen() {
                 ]}
                 onPress={() => setSelectedType('expense')}
               >
-                <Text style={styles.toggleText} numberOfLines={1}>💸 Gastos (¿A dónde se va?)</Text>
+                <Text style={styles.toggleText} numberOfLines={1}>💸 Gastos</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -494,7 +496,7 @@ export default function AnalyticsAndBudgetsScreen() {
                 ]}
                 onPress={() => setSelectedType('income')}
               >
-                <Text style={styles.toggleText} numberOfLines={1}>💰 Ingresos (¿De dónde entra?)</Text>
+                <Text style={styles.toggleText} numberOfLines={1}>💰 Ingresos</Text>
               </TouchableOpacity>
             </View>
 

@@ -17,6 +17,7 @@ import { useFinance } from '../../src/context/FinanceContext';
 import { GENERAL_ICONS, SmartIcon } from '../../src/components/BrandIcon';
 import { sendTestNotificationNow } from '../../src/services/notificationService';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
+import { useTheme } from '../../src/context/ThemeContext';
 
 const COLOR_PALETTE = [
   '#E50914',
@@ -49,6 +50,7 @@ export default function SettingsAndCategoriesScreen() {
   } = useFinance();
 
   const [tabType, setTabType] = useState<'expense' | 'income'>('expense');
+  const { theme, isDark, setTheme } = useTheme();
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLOR_PALETTE[0]);
@@ -156,6 +158,45 @@ export default function SettingsAndCategoriesScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Bloque 0: Apariencia y Tema (Blanco y Negro) 🌓 */}
+        <View style={styles.toolsCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Ionicons name={isDark ? 'moon' : 'sunny'} size={18} color={isDark ? '#38BDF8' : '#F59E0B'} />
+            <Text style={styles.toolsTitle}>Tema de la App (Blanco y Negro)</Text>
+          </View>
+          <Text style={styles.driveHelperText}>
+            Cambia entre el modo oscuro para la noche o modo claro para el día:
+          </Text>
+
+          <View style={styles.themeSwitchRow}>
+            <TouchableOpacity
+              style={[
+                styles.themeBtn,
+                isDark && styles.themeBtnDarkActive,
+              ]}
+              onPress={() => setTheme('dark')}
+            >
+              <Ionicons name="moon" size={15} color={isDark ? '#F8FAFC' : '#94A3B8'} />
+              <Text style={[styles.themeBtnText, isDark && styles.themeBtnDarkTextActive]} numberOfLines={1}>
+                🌙 Tema Negro
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.themeBtn,
+                !isDark && styles.themeBtnLightActive,
+              ]}
+              onPress={() => setTheme('light')}
+            >
+              <Ionicons name="sunny" size={15} color={!isDark ? '#0F172A' : '#94A3B8'} />
+              <Text style={[styles.themeBtnText, !isDark && styles.themeBtnLightTextActive]} numberOfLines={1}>
+                ☀️ Tema Blanco
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Bloque 1: Respaldo con Google Drive y Restauración */}
         <View style={styles.toolsCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -180,8 +221,8 @@ export default function SettingsAndCategoriesScreen() {
               onPress={handleBackupToGoogleDrive}
             >
               <Ionicons name="cloud-upload-outline" size={16} color="#052E16" />
-              <Text style={[styles.toolBtnPrimaryText, { color: '#052E16' }]}>
-                Guardar en Google Drive
+              <Text style={[styles.toolBtnPrimaryText, { color: '#052E16' }]} numberOfLines={1}>
+                Guardar en Drive
               </Text>
             </TouchableOpacity>
 
@@ -190,7 +231,7 @@ export default function SettingsAndCategoriesScreen() {
               onPress={() => setShowBackupModal(true)}
             >
               <Ionicons name="cloud-download-outline" size={16} color="#F8FAFC" />
-              <Text style={styles.toolBtnSecondaryText}>Restaurar Copia (.json)</Text>
+              <Text style={styles.toolBtnSecondaryText} numberOfLines={1}>Restaurar Copia</Text>
             </TouchableOpacity>
           </View>
 
@@ -213,8 +254,8 @@ export default function SettingsAndCategoriesScreen() {
               }}
             >
               <Ionicons name="notifications-outline" size={15} color="#38BDF8" />
-              <Text style={[styles.toolBtnSecondaryText, { color: '#38BDF8' }]}>
-                Probar Notificación Android
+              <Text style={[styles.toolBtnSecondaryText, { color: '#38BDF8' }]} numberOfLines={1}>
+                Probar Alerta
               </Text>
             </TouchableOpacity>
 
@@ -223,7 +264,7 @@ export default function SettingsAndCategoriesScreen() {
               onPress={handleResetZero}
             >
               <Ionicons name="trash-bin-outline" size={15} color="#FCA5A5" />
-              <Text style={styles.resetDangerText}>Reiniciar a $0.00</Text>
+              <Text style={styles.resetDangerText} numberOfLines={1}>Reiniciar a $0.00</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -236,7 +277,7 @@ export default function SettingsAndCategoriesScreen() {
             onPress={() => setShowModal(true)}
           >
             <Ionicons name="add" size={18} color="#0F172A" />
-            <Text style={styles.addBtnText}>Agregar Categoría</Text>
+            <Text style={styles.addBtnText} numberOfLines={1}>+ Categoría</Text>
           </TouchableOpacity>
         </View>
 
@@ -248,8 +289,8 @@ export default function SettingsAndCategoriesScreen() {
             ]}
             onPress={() => setTabType('expense')}
           >
-            <Text style={styles.segmentText}>
-              Categorías de Gastos ({categories.filter((c) => c.type === 'expense').length})
+            <Text style={styles.segmentText} numberOfLines={1}>
+              Gastos ({categories.filter((c) => c.type === 'expense').length})
             </Text>
           </TouchableOpacity>
 
@@ -260,8 +301,8 @@ export default function SettingsAndCategoriesScreen() {
             ]}
             onPress={() => setTabType('income')}
           >
-            <Text style={styles.segmentText}>
-              Categorías de Ingresos ({categories.filter((c) => c.type === 'income').length})
+            <Text style={styles.segmentText} numberOfLines={1}>
+              Ingresos ({categories.filter((c) => c.type === 'income').length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -472,6 +513,24 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   toolsTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
+  themeSwitchRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  themeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  themeBtnDarkActive: { backgroundColor: '#020617', borderColor: '#38BDF8' },
+  themeBtnLightActive: { backgroundColor: '#F8FAFC', borderColor: '#F59E0B' },
+  themeBtnText: { color: '#94A3B8', fontSize: 12, fontWeight: '700' },
+  themeBtnDarkTextActive: { color: '#38BDF8' },
+  themeBtnLightTextActive: { color: '#0F172A' },
   driveHelperText: {
     color: '#94A3B8',
     fontSize: 12,
