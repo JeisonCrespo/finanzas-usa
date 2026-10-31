@@ -2213,8 +2213,8 @@ const styles = StyleSheet.create({
     borderColor: '#1E293B',
     marginBottom: 16,
   },
-  loansSummaryCol: { flex: 1, alignItems: 'center' },
-  loansSummaryDivider: { width: 1, backgroundColor: '#1E293B', marginHorizontal: 12 },
+  loansSummaryCol: { flex: 1, alignItems: 'center', paddingHorizontal: 2 },
+  loansSummaryDivider: { width: 1, backgroundColor: '#1E293B', marginHorizontal: 6 },
   loansSummaryLabel: { color: '#94A3B8', fontSize: 10, fontWeight: '700' },
   loansSummaryVal: { fontSize: 20, fontWeight: '800', marginTop: 4 },
   headerSpread: {

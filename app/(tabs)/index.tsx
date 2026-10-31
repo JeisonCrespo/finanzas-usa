@@ -15,7 +15,6 @@ import { useFinance } from '../../src/context/FinanceContext';
 import { Transaction, TransactionType } from '../../src/types/finance';
 import { SmartIcon } from '../../src/components/BrandIcon';
 import { KeyboardSafeModal } from '../../src/components/KeyboardSafeModal';
-import { DonutChart } from '../../src/components/DonutChart';
 
 export default function DashboardScreen() {
   const {
@@ -35,12 +34,7 @@ export default function DashboardScreen() {
     deleteTransaction,
     confirmRecurringItem,
     postponeRecurringItem,
-    getCategoryBreakdown,
   } = useFinance();
-
-  // Gráfica Interactiva en Dashboard (Gastos e Ingresos Totales)
-  const [dashboardChartType, setDashboardChartType] = useState<'expense' | 'income'>('expense');
-  const [dashboardChartScope, setDashboardChartScope] = useState<'current' | 'all'>('current');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
@@ -132,12 +126,6 @@ export default function DashboardScreen() {
   const antMonthTotal = useMemo(() => {
     return antExpensesThisMonth.reduce((sum, tx) => sum + tx.amount + (tx.fee || 0), 0);
   }, [antExpensesThisMonth]);
-
-  // Desglose de Gastos e Ingresos para el Gráfico del Dashboard
-  const dashboardBreakdown = useMemo(() => {
-    const ym = dashboardChartScope === 'current' ? today.slice(0, 7) : 'all';
-    return getCategoryBreakdown(dashboardChartType, 'all', ym);
-  }, [getCategoryBreakdown, dashboardChartType, dashboardChartScope, today]);
 
   const filteredTotalExpense = useMemo(() => {
     return filteredTransactions
@@ -238,10 +226,10 @@ export default function DashboardScreen() {
 
           {/* Desglose rápido por dueño de cuentas separadas / dinero ajeno (NO sumado al patrimonio) */}
           {accounts.some((a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName)) && (
-            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#1E293B' }}>
+            <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#1E293B' }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '700' }} numberOfLines={1}>
-                  👤 Dinero de otras personas (No se suma a tu patrimonio):
+                <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '700', flex: 1, marginRight: 8 }} numberOfLines={1}>
+                  👤 Dinero ajeno guardado:
                 </Text>
                 {otherPeopleTotalBalance > 0 && (
                   <Text style={{ color: '#E9D5FF', fontSize: 11, fontWeight: '800' }}>
@@ -260,8 +248,8 @@ export default function DashboardScreen() {
                         borderWidth: 1,
                         borderColor: '#4C1D95',
                         borderRadius: 8,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
                         maxWidth: '100%',
                       }}
                     >
@@ -292,8 +280,8 @@ export default function DashboardScreen() {
               }}
             >
               <Text style={{ fontSize: 12 }}>🐜</Text>
-              <Text style={[styles.transferQuickText, { color: '#FDE68A' }]} numberOfLines={1} ellipsizeMode="tail">
-                Gasto Hormiga
+              <Text style={[styles.transferQuickText, { color: '#FDE68A' }]} numberOfLines={1}>
+                Hormiga
               </Text>
             </TouchableOpacity>
 
@@ -311,8 +299,8 @@ export default function DashboardScreen() {
               }}
             >
               <Ionicons name="logo-google" size={13} color="#4ADE80" />
-              <Text style={[styles.transferQuickText, { color: '#4ADE80' }]} numberOfLines={1} ellipsizeMode="tail">
-                Google Billetera
+              <Text style={[styles.transferQuickText, { color: '#4ADE80' }]} numberOfLines={1}>
+                Billetera
               </Text>
             </TouchableOpacity>
 
@@ -321,121 +309,11 @@ export default function DashboardScreen() {
               onPress={() => openNewTransactionModal('transfer')}
             >
               <Ionicons name="swap-horizontal-outline" size={14} color="#38BDF8" />
-              <Text style={styles.transferQuickText} numberOfLines={1} ellipsizeMode="tail">
+              <Text style={styles.transferQuickText} numberOfLines={1}>
                 Pasar
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* Gráfico de Dónde Se Va Tu Dinero / Origen de Ingresos Totales 📊 */}
-        <View style={styles.dashboardChartCard}>
-          <View style={styles.dashboardChartHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
-              <Ionicons name="pie-chart" size={18} color="#38BDF8" />
-              <Text style={styles.dashboardChartTitle} numberOfLines={1} ellipsizeMode="tail">
-                {dashboardChartType === 'expense'
-                  ? '¿A Dónde Se Van Tus Gastos?'
-                  : '¿De Dónde Vienen Tus Ingresos?'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.chartToggleSmallBtn}
-              onPress={() =>
-                setDashboardChartType(dashboardChartType === 'expense' ? 'income' : 'expense')
-              }
-            >
-              <Text style={styles.chartToggleSmallText}>
-                {dashboardChartType === 'expense' ? 'Ver Ingresos' : 'Ver Gastos'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Selector de Tiempo para la Gráfica */}
-          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
-            <TouchableOpacity
-              style={[
-                styles.chartMonthChip,
-                dashboardChartScope === 'current' && styles.chartMonthChipActive,
-              ]}
-              onPress={() => setDashboardChartScope('current')}
-            >
-              <Text
-                style={[
-                  styles.chartMonthChipText,
-                  dashboardChartScope === 'current' && styles.chartMonthChipTextActive,
-                ]}
-                numberOfLines={1}
-              >
-                Mes Actual ({today.slice(0, 7)})
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.chartMonthChip,
-                dashboardChartScope === 'all' && styles.chartMonthChipActive,
-              ]}
-              onPress={() => setDashboardChartScope('all')}
-            >
-              <Text
-                style={[
-                  styles.chartMonthChipText,
-                  dashboardChartScope === 'all' && styles.chartMonthChipTextActive,
-                ]}
-                numberOfLines={1}
-              >
-                Historial Total
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {dashboardBreakdown.length === 0 ? (
-            <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-              <Text style={{ color: '#64748B', fontSize: 13, textAlign: 'center' }}>
-                Aún no hay {dashboardChartType === 'expense' ? 'gastos' : 'ingresos'} registrados en este período.
-              </Text>
-            </View>
-          ) : (
-            <>
-              <DonutChart
-                data={dashboardBreakdown}
-                size={180}
-                strokeWidth={22}
-                centerLabel={dashboardChartType === 'expense' ? 'Total Gastos' : 'Total Ingresos'}
-              />
-
-              <View style={{ marginTop: 10 }}>
-                {dashboardBreakdown.slice(0, 5).map((item) => (
-                  <View key={item.categoryId} style={styles.chartCategoryRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, marginRight: 8 }}>
-                      <SmartIcon iconName={item.icon} color={item.color} size={15} boxSize={30} />
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.chartCategoryName} numberOfLines={1} ellipsizeMode="tail">
-                          {item.categoryName}
-                        </Text>
-                        <View style={styles.chartProgressTrack}>
-                          <View
-                            style={[
-                              styles.chartProgressFill,
-                              { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: item.color },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.chartCategoryAmount} numberOfLines={1} adjustsFontSizeToFit>
-                        ${item.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </Text>
-                      <Text style={[styles.chartCategoryPct, { color: item.color }]}>
-                        {item.percentage.toFixed(1)}%
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
         </View>
 
         {/* Radar de Gastos Hormiga del Mes 🐜 */}
@@ -1541,7 +1419,7 @@ const styles = StyleSheet.create({
   subBalanceValue: { color: '#CBD5E1', fontSize: 15, fontWeight: '700' },
   quickActionRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     marginTop: 14,
   },
   transferQuickBtn: {
@@ -1549,103 +1427,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 9,
-    paddingHorizontal: 4,
-    borderRadius: 10,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
     backgroundColor: '#0C4A6E',
     borderWidth: 1,
     borderColor: '#0284C7',
     minWidth: 0,
   },
-  transferQuickText: { color: '#E0F2FE', fontSize: 11, fontWeight: '700' },
-  dashboardChartCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginBottom: 16,
-  },
-  dashboardChartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  dashboardChartTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  chartToggleSmallBtn: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  chartToggleSmallText: {
-    color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  chartMonthChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  chartMonthChipActive: {
-    backgroundColor: '#0369A1',
-    borderColor: '#38BDF8',
-  },
-  chartMonthChipText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  chartMonthChipTextActive: {
-    color: '#F8FAFC',
-    fontWeight: '700',
-  },
-  chartCategoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E293B44',
-  },
-  chartCategoryName: {
-    color: '#F8FAFC',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 3,
-  },
-  chartProgressTrack: {
-    height: 4,
-    backgroundColor: '#1E293B',
-    borderRadius: 999,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  chartProgressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  chartCategoryAmount: {
-    color: '#F8FAFC',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  chartCategoryPct: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
+  transferQuickText: { color: '#E0F2FE', fontSize: 12, fontWeight: '700' },
   pendingSection: {
     backgroundColor: '#1E1B4B',
     borderRadius: 16,

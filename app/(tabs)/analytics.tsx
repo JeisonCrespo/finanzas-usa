@@ -19,6 +19,8 @@ export default function AnalyticsAndBudgetsScreen() {
     accounts,
     categories,
     transactions,
+    recurringItems,
+    includedTotalBalance,
     monthlyBudgets,
     addMonthlyBudget,
     addManualSpendToBudget,
@@ -31,6 +33,9 @@ export default function AnalyticsAndBudgetsScreen() {
   const [selectedType, setSelectedType] = useState<'expense' | 'income'>('expense');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
+  // Simulación de días hasta el sueldo si el usuario desea ajustar
+  const [customDaysToSalary, setCustomDaysToSalary] = useState<number | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -68,6 +73,56 @@ export default function AnalyticsAndBudgetsScreen() {
       .filter((t) => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount + (t.fee || 0), 0);
   }, [filteredTx]);
+
+  // CÁLCULOS DE RUNWAY / SUPERVIVENCIA FINANCIERA CON TU SUELDO 🧭
+  const nextPaycheckItem = useMemo(() => {
+    return recurringItems
+      .filter((r) => r.type === 'income' && r.active)
+      .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate))[0];
+  }, [recurringItems]);
+
+  const autoDaysToPaycheck = useMemo(() => {
+    if (!nextPaycheckItem) return null;
+    const nextDate = new Date(nextPaycheckItem.nextDueDate);
+    const nowDate = new Date(today);
+    const diffTime = nextDate.getTime() - nowDate.getTime();
+    return Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+  }, [nextPaycheckItem, today]);
+
+  const daysToNextPaycheck = customDaysToSalary ?? autoDaysToPaycheck ?? 15;
+
+  const currentDayOfMonth = parseInt(today.slice(8, 10), 10) || 1;
+  const currentMonthExpenses = useMemo(() => {
+    return transactions
+      .filter((t) => t.type === 'expense' && t.date.startsWith(today.slice(0, 7)))
+      .reduce((sum, t) => sum + t.amount + (t.fee || 0), 0);
+  }, [transactions, today]);
+
+  const dailyBurnRate = useMemo(() => {
+    if (currentMonthExpenses > 0 && currentDayOfMonth > 0) {
+      return currentMonthExpenses / currentDayOfMonth;
+    }
+    if (totalExpense > 0) {
+      return totalExpense / 30;
+    }
+    return 0;
+  }, [currentMonthExpenses, currentDayOfMonth, totalExpense]);
+
+  const availableFunds = Math.max(0, includedTotalBalance);
+
+  const runwayDays = useMemo(() => {
+    if (dailyBurnRate <= 0) return availableFunds > 0 ? 999 : 0;
+    return Math.floor(availableFunds / dailyBurnRate);
+  }, [availableFunds, dailyBurnRate]);
+
+  const safeDailyBudget = useMemo(() => {
+    if (daysToNextPaycheck <= 0) return availableFunds;
+    return availableFunds / daysToNextPaycheck;
+  }, [availableFunds, daysToNextPaycheck]);
+
+  const canSurviveUntilPaycheck = runwayDays >= daysToNextPaycheck;
+  const leftoverAtPaycheck = Math.max(0, availableFunds - dailyBurnRate * daysToNextPaycheck);
+  const deficitAtPaycheck = Math.max(0, dailyBurnRate * daysToNextPaycheck - availableFunds);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -429,7 +484,7 @@ export default function AnalyticsAndBudgetsScreen() {
                 ]}
                 onPress={() => setSelectedType('expense')}
               >
-                <Text style={styles.toggleText}>¿Dónde se va el dinero? (Gastos)</Text>
+                <Text style={styles.toggleText} numberOfLines={1}>💸 Gastos (¿A dónde se va?)</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -439,7 +494,7 @@ export default function AnalyticsAndBudgetsScreen() {
                 ]}
                 onPress={() => setSelectedType('income')}
               >
-                <Text style={styles.toggleText}>Origen de Ingresos</Text>
+                <Text style={styles.toggleText} numberOfLines={1}>💰 Ingresos (¿De dónde entra?)</Text>
               </TouchableOpacity>
             </View>
 
@@ -500,6 +555,163 @@ export default function AnalyticsAndBudgetsScreen() {
                   ))}
                 </View>
               )}
+            </View>
+
+            {/* Runway / Supervivencia Financiera con tu Sueldo 🧭 */}
+            <View style={styles.runwayCard}>
+              <View style={styles.runwayHeaderRow}>
+                <View style={[styles.runwayBadgeIcon, { backgroundColor: canSurviveUntilPaycheck ? '#052E16' : '#450A0A' }]}>
+                  <Ionicons
+                    name={canSurviveUntilPaycheck ? 'shield-checkmark-outline' : 'warning-outline'}
+                    size={20}
+                    color={canSurviveUntilPaycheck ? '#4ADE80' : '#F87171'}
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                  <Text style={styles.runwayCardTitle} numberOfLines={1}>
+                    Runway y Supervivencia Financiera
+                  </Text>
+                  <Text style={styles.runwayCardSub} numberOfLines={1}>
+                    {canSurviveUntilPaycheck
+                      ? '🟢 Supervivencia asegurada hasta el próximo sueldo'
+                      : '🔴 Cuidado: Tu saldo se agotará antes de cobrar'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 3 Métricas Principales */}
+              <View style={styles.runwayStatsRow}>
+                <View style={styles.runwayStatCol}>
+                  <Text style={styles.runwayStatLabel} numberOfLines={1}>SALDO DISPONIBLE</Text>
+                  <Text style={[styles.runwayStatVal, { color: '#38BDF8' }]} numberOfLines={1} adjustsFontSizeToFit>
+                    ${availableFunds.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </Text>
+                </View>
+                <View style={styles.runwayDivider} />
+                <View style={styles.runwayStatCol}>
+                  <Text style={styles.runwayStatLabel} numberOfLines={1}>GASTO DIARIO</Text>
+                  <Text style={[styles.runwayStatVal, { color: '#F87171' }]} numberOfLines={1} adjustsFontSizeToFit>
+                    ${dailyBurnRate.toFixed(2)}/día
+                  </Text>
+                </View>
+                <View style={styles.runwayDivider} />
+                <View style={styles.runwayStatCol}>
+                  <Text style={styles.runwayStatLabel} numberOfLines={1}>TIEMPO RUNWAY</Text>
+                  <Text
+                    style={[
+                      styles.runwayStatVal,
+                      { color: runwayDays > 15 ? '#4ADE80' : runwayDays >= 7 ? '#FBBF24' : '#F87171' },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {runwayDays >= 999 ? '+90 días' : `${runwayDays} ${runwayDays === 1 ? 'día' : 'días'}`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Barra Visual de Runway */}
+              <View style={styles.runwayProgressBox}>
+                <View style={styles.runwayProgressBar}>
+                  <View
+                    style={[
+                      styles.runwayProgressFill,
+                      {
+                        width: `${Math.min(100, Math.max(8, (runwayDays / 30) * 100))}%`,
+                        backgroundColor:
+                          runwayDays >= 20 ? '#22C55E' : runwayDays >= 10 ? '#F59E0B' : '#EF4444',
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.runwayProgressSub}>
+                  {runwayDays >= 30
+                    ? 'Excelente: Tienes más de 1 mes de autonomía'
+                    : runwayDays >= 15
+                    ? 'Buen colchón: Tienes más de 2 semanas cubiertas'
+                    : runwayDays >= 7
+                    ? 'Atención: Te queda 1 semana de saldo a tu ritmo actual'
+                    : 'Crítico: Menos de 7 días de saldo disponible'}
+                </Text>
+              </View>
+
+              {/* Diagnóstico vs Sueldo */}
+              <View
+                style={[
+                  styles.runwayVerdictBox,
+                  {
+                    backgroundColor: canSurviveUntilPaycheck ? '#052E16' : '#450A0A',
+                    borderColor: canSurviveUntilPaycheck ? '#166534' : '#991B1B',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.runwayVerdictTitle,
+                    { color: canSurviveUntilPaycheck ? '#86EFAC' : '#FCA5A5' },
+                  ]}
+                >
+                  {canSurviveUntilPaycheck
+                    ? `✓ Llegas a salvo al día de tu sueldo (en ${daysToNextPaycheck} días)`
+                    : `⚠️ Alerta: Te faltarán $${deficitAtPaycheck.toFixed(2)} para llegar a tu sueldo`}
+                </Text>
+
+                <Text style={styles.runwayVerdictDesc}>
+                  {canSurviveUntilPaycheck
+                    ? `A tu ritmo de gasto actual ($${dailyBurnRate.toFixed(2)}/día), tu saldo te durará ${runwayDays >= 999 ? '+90' : runwayDays} días. Al día del sueldo te quedarán aproximadamente $${leftoverAtPaycheck.toFixed(2)} de colchón.`
+                    : `A tu ritmo de gasto actual ($${dailyBurnRate.toFixed(2)}/día), tu saldo se agotará en ${runwayDays} días, pero aún faltan ${daysToNextPaycheck} días para cobrar tu sueldo. Para sobrevivir hasta ese día, tu gasto diario máximo no debe superar $${safeDailyBudget.toFixed(2)}/día.`}
+                </Text>
+
+                <View style={styles.runwaySafeBudgetRow}>
+                  <Ionicons name="calculator-outline" size={16} color="#FDE68A" />
+                  <Text style={styles.runwaySafeBudgetText}>
+                    Gasto diario máximo recomendado:{' '}
+                    <Text style={{ fontWeight: '800', color: '#FBBF24' }}>
+                      ${safeDailyBudget.toFixed(2)} / día
+                    </Text>
+                  </Text>
+                </View>
+              </View>
+
+              {/* Selector de Días hasta el próximo cobro */}
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.runwaySelectorLabel}>
+                  {nextPaycheckItem
+                    ? `Ingreso programado: ${nextPaycheckItem.title} (${nextPaycheckItem.nextDueDate}) • O simula cuándo cobras:`
+                    : '¿En cuántos días cobras tu próximo sueldo / ingreso?'}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                  {[3, 5, 7, 10, 15, 30].map((d) => (
+                    <TouchableOpacity
+                      key={d}
+                      style={[
+                        styles.runwayDaysChip,
+                        daysToNextPaycheck === d && styles.runwayDaysChipActive,
+                      ]}
+                      onPress={() => setCustomDaysToSalary(d)}
+                    >
+                      <Text
+                        style={[
+                          styles.runwayDaysChipText,
+                          daysToNextPaycheck === d && styles.runwayDaysChipTextActive,
+                        ]}
+                      >
+                        {d}d
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {customDaysToSalary !== null && autoDaysToPaycheck !== null && (
+                    <TouchableOpacity
+                      style={[styles.runwayDaysChip, { backgroundColor: '#334155' }]}
+                      onPress={() => setCustomDaysToSalary(null)}
+                    >
+                      <Text style={[styles.runwayDaysChipText, { color: '#E2E8F0' }]}>
+                        Auto ({autoDaysToPaycheck}d)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
             </View>
           </>
         )}
@@ -755,19 +967,21 @@ const styles = StyleSheet.create({
     borderColor: '#1E293B',
     marginBottom: 14,
   },
-  cashflowCol: { flex: 1, alignItems: 'center' },
-  cashflowDivider: { width: 1, backgroundColor: '#1E293B' },
+  cashflowCol: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  cashflowDivider: { width: 1, backgroundColor: '#1E293B', marginHorizontal: 6 },
   cashflowLabel: { color: '#64748B', fontSize: 10, fontWeight: '700' },
   cashflowVal: { fontSize: 15, fontWeight: '800', marginTop: 4 },
   toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
   toggleBtn: {
     flex: 1,
     paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 12,
     backgroundColor: '#0F172A',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#1E293B',
+    minWidth: 0,
   },
   toggleExpenseActive: { backgroundColor: '#7F1D1D', borderColor: '#EF4444' },
   toggleIncomeActive: { backgroundColor: '#14532D', borderColor: '#22C55E' },
@@ -778,6 +992,145 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: '#1E293B',
+  },
+  runwayCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginTop: 16,
+  },
+  runwayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  runwayBadgeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  runwayCardTitle: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  runwayCardSub: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  runwayStatsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#1E293B44',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 12,
+  },
+  runwayStatCol: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  runwayDivider: {
+    width: 1,
+    backgroundColor: '#334155',
+    marginHorizontal: 4,
+  },
+  runwayStatLabel: {
+    color: '#94A3B8',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  runwayStatVal: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  runwayProgressBox: {
+    marginBottom: 12,
+  },
+  runwayProgressBar: {
+    height: 8,
+    backgroundColor: '#1E293B',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  runwayProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  runwayProgressSub: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  runwayVerdictBox: {
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  runwayVerdictTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  runwayVerdictDesc: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  runwaySafeBudgetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  runwaySafeBudgetText: {
+    color: '#FDE68A',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  runwaySelectorLabel: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  runwayDaysChip: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  runwayDaysChipActive: {
+    backgroundColor: '#0284C7',
+    borderColor: '#38BDF8',
+  },
+  runwayDaysChipText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  runwayDaysChipTextActive: {
+    color: '#F8FAFC',
+    fontWeight: '800',
   },
   emptyText: {
     color: '#64748B',
