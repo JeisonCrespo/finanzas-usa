@@ -3,6 +3,8 @@ name: Compilar APK Android
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -58,6 +60,7 @@ jobs:
         with:
           tag_name: v1.0.4
           name: "Finanzas USA Android APK (v1.0.4) — Correcciones y Mejoras Visuales"
+          make_latest: true
           body: |
             ### 🚀 Finanzas USA v1.0.4 — Corrección de Errores y Bugs Visuales
 
