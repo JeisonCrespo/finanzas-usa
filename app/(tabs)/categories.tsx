@@ -343,11 +343,11 @@ export default function SettingsAndCategoriesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.versionAppName}>Finanzas USA • Personal Finance</Text>
               <Text style={styles.versionSub}>
-                Versión 1.0.3 (Build 4 • Expo SDK 58 • Android)
+                Versión 1.0.4 (Build 5 • Expo SDK 58 • Android)
               </Text>
             </View>
             <View style={styles.statusOnlineBadge}>
-              <Text style={styles.statusOnlineText}>v1.0.3</Text>
+              <Text style={styles.statusOnlineText}>v1.0.4</Text>
             </View>
           </View>
 

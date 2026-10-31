@@ -2,6 +2,9 @@ name: Compilar APK Android
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -39,24 +42,55 @@ jobs:
         working-directory: ./android
         run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
 
-      - name: Renombrar APK con versión 1.0.3
+      - name: Renombrar APK con versión 1.0.4
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Finanzas-USA-v1.0.3.apk
+          cp android/app/build/outputs/apk/release/app-release.apk Finanzas-USA-v1.0.4.apk
           cp android/app/build/outputs/apk/release/app-release.apk Finanzas-USA.apk
 
       - name: Subir APK como Artefacto descargable
         uses: actions/upload-artifact@v4
         with:
-          name: Finanzas-USA-v1.0.3-APK
-          path: Finanzas-USA-v1.0.3.apk
+          name: Finanzas-USA-v1.0.4-APK
+          path: Finanzas-USA-v1.0.4.apk
 
-      - name: Publicar APK v1.0.3 en GitHub Releases
+      - name: Publicar APK v1.0.4 en GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.3
-          name: "Finanzas USA Android APK (v1.0.3)"
-          body: "Versión **1.0.3** con ícono Wallet, bancos directos (Wells Fargo, Chase, Truist), importador inteligente de alertas/CSV, préstamos, metas de ahorro, respaldo en Google Drive y recordatorios de notificaciones en Android 1 o 2 días antes."
+          tag_name: v1.0.4
+          name: "Finanzas USA Android APK (v1.0.4)"
+          body: |
+            ### 🚀 Novedades de Finanzas USA v1.0.4
+
+            Esta versión **1.0.4** introduce el soporte completo para temas, herramientas de supervivencia financiera, radar de fugas de dinero y perfeccionamiento visual:
+
+            #### 🌓 1. Modo Blanco y Negro (Tema Claro y Oscuro)
+            - **Tema dual en toda la app**: Cambia al instante entre el modo oscuro para la noche y el nuevo **modo blanco (claro)** para el día.
+            - **Adaptación completa**: Fondos, tarjetas, textos de alto contraste, modales emergentes y gráfica de dona se transforman automáticamente.
+            - **Persistencia en SQLite**: Tu elección se mantiene guardada incluso al reiniciar la app.
+
+            #### 🐜 2. Radar de Gastos Hormiga & Suscripciones Compartidas
+            - **Detección de gastos impulsivos**: Visualiza cafés, snacks, propinas y compras pequeñas para evitar fugas silenciosas.
+            - **Cálculo de impacto**: Conoce qué porcentaje de tus gastos totales representan estas compras.
+            - **Diseño sin desbordes**: Encaja limpiamente en cualquier tamaño de pantalla.
+
+            #### ⏳ 3. Runway y Supervivencia Financiera
+            - **Burn Rate diario**: Ritmo promedio de gasto por día en el mes.
+            - **Días de supervivencia**: Cuántos días te duran tus fondos antes de llegar a $0.
+            - **Gasto diario seguro**: Simula en cuántos días cobras tu próximo cheque (3d, 5d, 7d, 10d, 15d, 30d) y obtén tu presupuesto diario seguro para sobrevivir.
+
+            #### 💳 4. Rastreador de Deudas en Cuotas (BNPL) & Estrategias
+            - Registra tus compras a plazos (Affirm, Klarna, Afterpay, PayPal Pay in 4, tarjetas de crédito) con fechas y pagos mínimos.
+            - Métodos **Bola de Nieve** y **Avalancha** con barras de avance.
+
+            #### 👥 5. Cuentas Separadas para Otras Personas
+            - Separa el dinero guardado de familiares o terceros sin que altere tu patrimonio neto personal.
+
+            #### 🛠️ 6. Correcciones y Mejoras de Usabilidad
+            - Textos ajustados en botones de Presupuesto y Ajustes sin recortes ni desbordes.
+            - Botón de cuentas simplificado a **"Agregar Banco"**.
+            - Eliminado el doble signo `+` en botones de creación.
+            - Respaldo en la nube con Google Drive (.json) y notificaciones Android para fechas de vencimiento.
           files: |
-            Finanzas-USA-v1.0.3.apk
+            Finanzas-USA-v1.0.4.apk
             Finanzas-USA.apk
             android/app/build/outputs/apk/release/app-release.apk
