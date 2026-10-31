@@ -216,12 +216,25 @@ export default function DashboardScreen() {
           </Text>
 
           <View style={styles.subBalancesRow}>
-            <View style={styles.subBalanceBox}>
-              <Text style={styles.subBalanceLabel} numberOfLines={1}>Cuentas Separadas</Text>
+            <TouchableOpacity
+              style={styles.subBalanceBox}
+              onPress={() => setHideOtherMoney(!hideOtherMoney)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.subBalanceLabel} numberOfLines={1}>Cuentas Separadas</Text>
+                <Ionicons
+                  name={hideOtherMoney ? 'eye-off-outline' : 'eye-outline'}
+                  size={13}
+                  color={colors.textMuted}
+                />
+              </View>
               <Text style={styles.subBalanceValue} numberOfLines={1} adjustsFontSizeToFit>
-                ${excludedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {hideOtherMoney
+                  ? '••••••'
+                  : `$${excludedTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               </Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.subBalanceDivider} />
             <View style={styles.subBalanceBox}>
               <Text style={styles.subBalanceLabel} numberOfLines={1}>Mi Patrimonio Neto</Text>
@@ -241,12 +254,14 @@ export default function DashboardScreen() {
                 borderTopColor: isDark ? '#1E293B' : '#E2E8F0',
               }}
             >
-              <View
+              <TouchableOpacity
+                onPress={() => setHideOtherMoney(!hideOtherMoney)}
+                activeOpacity={0.7}
                 style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  marginBottom: 6,
+                  marginBottom: hideOtherMoney ? 2 : 6,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
@@ -258,19 +273,16 @@ export default function DashboardScreen() {
                     }}
                     numberOfLines={1}
                   >
-                    👤 Dinero ajeno guardado:
+                    👤 Dinero ajeno / Cuentas separadas:
                   </Text>
-                  <TouchableOpacity
-                    onPress={() => setHideOtherMoney(!hideOtherMoney)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={{ padding: 2 }}
-                  >
-                    <Ionicons
-                      name={hideOtherMoney ? 'eye-off-outline' : 'eye-outline'}
-                      size={15}
-                      color={isDark ? '#C084FC' : '#7C3AED'}
-                    />
-                  </TouchableOpacity>
+                  <Ionicons
+                    name={hideOtherMoney ? 'eye-off-outline' : 'eye-outline'}
+                    size={15}
+                    color={isDark ? '#C084FC' : '#7C3AED'}
+                  />
+                  <Text style={{ color: isDark ? '#A78BFA' : '#7C3AED', fontSize: 11, fontWeight: '700' }}>
+                    {hideOtherMoney ? '(Oculto)' : ''}
+                  </Text>
                 </View>
                 {otherPeopleTotalBalance > 0 && (
                   <Text style={{ color: isDark ? '#E9D5FF' : '#5B21B6', fontSize: 11, fontWeight: '800' }}>
@@ -279,38 +291,39 @@ export default function DashboardScreen() {
                       : `$${otherPeopleTotalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                   </Text>
                 )}
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {accounts
-                  .filter((a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName))
-                  .map((sep) => (
-                    <View
-                      key={sep.id}
-                      style={{
-                        backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
-                        borderWidth: 1,
-                        borderColor: isDark ? '#4C1D95' : '#DDD6FE',
-                        borderRadius: 8,
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                        maxWidth: '100%',
-                      }}
-                    >
-                      <Text
-                        style={{ color: isDark ? '#E9D5FF' : '#6D28D9', fontSize: 11, fontWeight: '700' }}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
+              </TouchableOpacity>
+
+              {!hideOtherMoney && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                  {accounts
+                    .filter((a) => (!a.includeInTotal && a.type !== 'credit') || Boolean(a.ownerName))
+                    .map((sep) => (
+                      <View
+                        key={sep.id}
+                        style={{
+                          backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
+                          borderWidth: 1,
+                          borderColor: isDark ? '#4C1D95' : '#DDD6FE',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          maxWidth: '100%',
+                        }}
                       >
-                        {sep.ownerName ? `${sep.ownerName}: ` : `${sep.name}: `}
-                        <Text style={{ color: isDark ? '#F8FAFC' : '#1E293B', fontWeight: '800' }}>
-                          {hideOtherMoney
-                            ? '••••••'
-                            : `$${sep.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                        <Text
+                          style={{ color: isDark ? '#E9D5FF' : '#6D28D9', fontSize: 11, fontWeight: '700' }}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {sep.ownerName ? `${sep.ownerName}: ` : `${sep.name}: `}
+                          <Text style={{ color: isDark ? '#F8FAFC' : '#1E293B', fontWeight: '800' }}>
+                            ${sep.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </Text>
                         </Text>
-                      </Text>
-                    </View>
-                  ))}
-              </View>
+                      </View>
+                    ))}
+                </View>
+              )}
             </View>
           )}
 
